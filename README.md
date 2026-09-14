@@ -338,67 +338,48 @@ recovers the tree and dispersion. So neither half is wrong: this is joint identi
 rate against time, a general property of relaxed clocks. It is one replicate, and a
 ten-replicate coverage study is the outstanding piece of work.
 
-## Tests to write
+## Tests
 
-No Java bug has been found in this package so far: it compiled first time and has been
-correct at every check. So these are **regression protection for a package that is about to
-change**, not a hunt for something currently broken. Their value is that they fail loudly
-when the Mascot integration lands.
+    ant test                      # 15 JUnit tests over the Java
+    python3 test/test_generators.py   # 10 tests over the XML generators
 
-JUnit is the conventional choice for a BEAST 2 package and is what a reviewer will expect,
-but it is not currently a dependency here and would have to be added. Test fixtures are
-cheap either way: a tree comes from a newick string through `TreeParser` in three lines.
+Both suites were **mutation tested**: the code was deliberately broken and the tests were
+checked to fail. That matters more than the pass count. Several times during development a
+check passed while quietly testing nothing, so a green suite is only evidence once it has
+been shown to go red.
 
-**Worth writing properly.**
+| Mutation | Caught by |
+| --- | --- |
+| tree-dirty check removed from `requiresRecalculation` | 1 Java failure |
+| clade factor dropped from `getRateForBranch` | 3 Java failures |
+| skyline grid and parameter dimension drift apart | 2 generator failures |
+| calendar grid keeps the `tree` attribute | 1 generator failure |
 
-- [ ] **Design matrix on a hand-checked tree.** Build a small tree in code, define columns
-      exercising `includeStem`, `excludeClade`, two elements sharing a category, and a clade
-      that is not monophyletic. Assert the exact **set of branches** in each column, not the
-      counts. Counts are the obvious thing to assert and they are too weak: a design attached
-      to the wrong branches has identical counts. This is the only place in the package where
-      a silent wrong answer can originate.
-- [ ] **Cache invalidation under a topology change.** Build the design, mutate the tree,
-      assert it was recomputed. This guards an override that exists only because the parent
-      class has its own tree-dirty check commented out in the BEAST source. If someone later
-      tidies that method because it looks redundant, this is the only thing that would catch
-      it, and the resulting bug would be invisible in every output.
+**Java, `test/mixedeffectsclock/`.** `DesignMatrixTest` asserts the exact *set* of branches in
+each column, named by the tips below them rather than by node number. Counts are the obvious
+thing to assert and are too weak: a design on entirely the wrong branches has identical
+counts. It covers stems, stem-only columns, shared categories, disjointness, and pins the
+behaviour of a clade that is not monophyletic. `RateAndCacheTest` checks the arithmetic
+exactly, including a slowdown and a branch in two columns where the fold changes multiply,
+and then the cache: that a fresh computation follows the topology, that the cached one is
+detectably stale after a change, and that invalidation reconciles them.
 
-**Cheap, add in the same sitting.**
+One thing that test exposed and is worth knowing: `requiresRecalculation` reads the tree's
+dirty *flag*, not the tree. Mutating nodes directly does not set it, so a test has to.
 
-- [ ] **Store and restore.** Propose, reject, assert the design reverts to the previous one.
-- [ ] **Rate arithmetic.** Exact equality against hand-computed values, including a negative
-      coefficient and a branch in two columns, where the coefficients sum.
-- [ ] **Input validation** that already exists: `normalize="true"` rejected, coefficient
-      dimension mismatched against the design, `excludeClade` without `includeStem`.
+**Generators, `test/test_generators.py`.** The bugs that have actually happened in this
+package are here, not in the Java. The tests assert that K levels produce K+1 grid values and
+dimension K+2 together; that a one-value grid is never emitted, since it makes BEAST exit 0
+and log nothing; that `--levels` passes a tree to the grid and `--boundaries` does not, which
+is the entire difference between fractions and calendar times; that every flag combination
+parses and carries exactly its own layers; that every clade carrying a column is constrained
+by `idref` to the clock's own taxon set; that no comment contains a double hyphen; and that
+the feast conversion has caching off.
 
-**The generators need tests too, and they are a different job.** Everything above is Java.
-The bugs that have actually happened in the generators are arithmetic and wiring, and they
-are cheap to catch with plain Python assertions:
-
-- [ ] **Grid arithmetic.** For K levels, assert the emitted grid has K+1 values and every
-      skyline parameter has dimension K+2. Getting these out of step is the single easiest
-      way to produce a silently wrong Mascot model, and it is why the grid is derived rather
-      than typed.
-- [ ] **A single shift value is rejected.** It currently produces an XML that exits 0, logs
-      nothing and reports NaN tip types. The generator should refuse it outright.
-- [ ] **Calendar versus relative grids.** Assert the `rateShifts` element has a `tree`
-      attribute with `--levels` and none with `--boundaries`. That one attribute is the whole
-      difference between the two, and it is invisible on inspection.
-- [ ] **Every emitted XML parses**, and contains exactly the layers the flags asked for. A
-      three-line check over all flag combinations would have caught the slow clade silently
-      missing from the design when the two-column option was first written.
-- [ ] **No `--` inside an XML comment**, which is illegal and has broken generated files
-      three times.
-
-**If a third tier is wanted.**
-
-- [ ] **A golden test on the 50-taxon tree in `data/`**, asserting the full design. Realistic
-      size rather than a toy, so it would catch a change in semantics that a six-taxon
-      fixture might not reach.
-
-**Deliberately out of scope.** Anything needing an MCMC, the operators, or the priors. Those
-are ORC's code or BEAST's, and the end-to-end checks in `validation/` cover them better than
-a unit test could.
+**Still worth adding.** Store and restore across a rejected proposal. A golden test on the
+50-taxon tree in `data/`, which is realistic size rather than a toy. Nothing needing an MCMC:
+the operators are ORC's and BEAST's, and the end-to-end checks in `validation/` cover them
+better than a unit test could.
 
 ## Not done
 

@@ -61,6 +61,40 @@ Point the build at a JDK explicitly:
     </javac>
   </target>
 
+  <!-- BEAST's own launcher jar carries beast.pkgmgmt.BEASTClassLoader, which BEAST.base
+       reaches for when it initialises an object. It is not needed to COMPILE the package
+       but it is needed to RUN anything that builds BEAST objects, so the tests need it.
+       Override with -Dbeast.home=/path/to/beast if BEAST lives somewhere else. -->
+  <property name="beast.home" location="${user.home}/phyloApps/beast2.7.7"/>
+
+  <path id="test.classpath">
+    <path refid="beast.classpath"/>
+    <fileset dir="${beast.home}/lib" includes="launcher.jar"/>
+    <fileset dir="lib" includes="*.jar"/>
+    <pathelement location="${build}/classes"/>
+    <pathelement location="${build}/test-classes"/>
+  </path>
+
+  <target name="compile-tests" depends="compile">
+    <mkdir dir="${build}/test-classes"/>
+    <javac srcdir="test" destdir="${build}/test-classes"
+           fork="true" executable="${javac.home}/bin/javac"
+           release="17" includeantruntime="false" debug="true">
+      <classpath refid="test.classpath"/>
+    </javac>
+  </target>
+
+  <target name="test" depends="compile-tests" description="run the unit tests">
+    <junit printsummary="yes" haltonfailure="yes" fork="true"
+           jvm="${javac.home}/bin/java" showoutput="false">
+      <classpath refid="test.classpath"/>
+      <formatter type="plain" usefile="false"/>
+      <batchtest>
+        <fileset dir="test" includes="**/*Test.java"/>
+      </batchtest>
+    </junit>
+  </target>
+
   <target name="build" depends="compile" description="build the package jar">
     <mkdir dir="${dist}"/>
     <jar destfile="${dist}/${pkgname}.jar" basedir="${build}/classes"/>
