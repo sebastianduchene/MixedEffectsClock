@@ -239,6 +239,14 @@ To log both, so traces from the two codebases line up without hand conversion:
 reachable from the posterior, so without it the column reports its initial value for the
 entire run. The failure is silent and the number is plausible.
 
+Two things follow from that. The parameter ids in the expression must be feast identifiers,
+`[a-zA-Z_][a-zA-Z0-9_.]*`: dots are fine, a colon is not, so a BEAUti-style id such as
+`ucldStdev.c:lep` has to be renamed before an expression can name it. And the rule is about
+loggers only: `feast.expressions.ExpCalculatorDistribution` with `isLog="true"` takes an
+arbitrary log-density expression, sits inside the posterior, and is invalidated normally.
+That is the way to express a prior on a derived quantity, such as a Gamma on the foreground
+rate `clockRate * exp(beta_k)` rather than on the coefficient itself.
+
 The priors are not matched either. BEAST X puts Exponential(mean 1/3) on the coefficient
 of variation; this package puts it on the log-scale SD. Sampling the prior, the medians
 agree (0.227 vs 0.230) and the 95% uppers do not (1.01 vs 1.33).
@@ -363,5 +371,6 @@ this model introduces. If the dates or the rate are weakly informed, expect it.
 | `class file has wrong version 61.0` | building with a Java 11 compiler; needs JDK 17+ |
 | BEAST reports a class as missing | it is not registered in `version.xml` as a `beast.base.core.BEASTInterface` service |
 | Cannot initialise, NaN density at state 0 | a parameter starts outside its prior |
+| feast reports a parameter in an expression was not found | its id contains a colon; feast identifiers are `[a-zA-Z_][a-zA-Z0-9_.]*`, so rename the parameter |
 | Element name not recognised, e.g. `<prior>` or `<Normal>` | no `<map>` declaration; write `spec="..."` in full instead |
 | XML will not parse, no useful message | a comment contains a double hyphen, which is illegal |
