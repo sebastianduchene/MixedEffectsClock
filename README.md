@@ -200,6 +200,11 @@ clock still recovers its coefficients, not that the demes mean anything.
 
 ## A minimal clock block
 
+This is the clock element alone. For a whole analysis that runs, copy
+`skills/mixed-effects-clock-beast2/templates/me_clock_minimal.xml` instead: it has the
+priors, the constraints and the operators already wired, and the six traps below are what
+it is wired to avoid.
+
 ```xml
 <branchRateModel id="clock" spec="mixedeffectsclock.MixedEffectsClockModel"
                  tree="@Tree" rates="@rates" clock.rate="@clockRate"
@@ -221,7 +226,7 @@ clock still recovers its coefficients, not that the demes mean anything.
 that stem). Several elements sharing a category share one coefficient, which is how
 disjoint groups of branches get a single shared effect.
 
-## Three things that will bite you
+## Six things that will bite you
 
 **Anything with a cache must sit inside the posterior, or have caching turned off.** BEAST
 invalidates a cache only for objects reachable from the posterior. A clock declared inside a
@@ -247,9 +252,29 @@ touching it alone is nearly always rejected. Measured over the same 5,000,000 st
 | bare `BactrianScaleOperator` | 224 | 0.289, not converged |
 | ORC `UcldScalerOperator` | 8875 | 0.336 |
 
-The coefficients need a random walk rather than a scale operator, since they are log-scale
-and cross zero. Every parameter must also start inside its prior: an intercept left at 2e-3
-under a Gamma with mean 7e-9 makes the density underflow to NaN and BEAST cannot initialise.
+**The branch rates need their own prior**, the same mean-one lognormal the clock declares:
+
+```xml
+<distribution id="ratesPrior" spec="beast.base.inference.distribution.Prior" x="@rates">
+  <distr spec="beast.base.inference.distribution.LogNormalDistributionModel" S="@ucldStdev" meanInRealSpace="true">
+    <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="M">1.0</parameter>
+  </distr>
+</distribution>
+```
+
+It is easy to leave out precisely because the clock already names that distribution. Without
+it the dispersion has nothing but its own prior to answer to, the joint scaler above has an
+unbalanced Hastings ratio, and the dispersion climbs away with no error. On the six-taxon
+template it reached a mean of 5.52 under a prior with mean 0.333, and took the tree height to
+2.6e8 with it; with the prior in place the median is 0.218 and the tree height 0.95. Watch
+also for an improper population-size prior, `OneOnX` under a flat likelihood, which lets the
+tree run away by the same route.
+
+**The coefficients need a random walk**, not a scale operator, since they are log-scale and
+cross zero.
+
+**Every parameter must start inside its prior.** An intercept left at 2e-3 under a Gamma with
+mean 7e-9 makes the density underflow to NaN and BEAST cannot initialise at all.
 
 ## The dispersion is not the BEAST X quantity
 
@@ -405,6 +430,8 @@ better than a unit test could.
 
 ## Not done
 
+- The ten-replicate coverage study for the rate-against-time behaviour in [Status](#status)
+  is not done. It is one replicate so far.
 - Never run at real scale; every test is 5,000 or 10,000 sites against a 1.3 Mb target.
 - The dispersion prior is documented rather than matched to BEAST X.
 - No licence chosen. BEAST 2 and ORC are LGPL, which is the obvious candidate.
