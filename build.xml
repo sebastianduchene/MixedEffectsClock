@@ -108,6 +108,13 @@ Point the build at a JDK explicitly:
     <copy todir="${build}/addon/examples" failonerror="false">
       <fileset dir="examples"/>
     </copy>
+    <!-- the shipped generators read ../data, so the data has to travel with them -->
+    <mkdir dir="${build}/addon/data"/>
+    <copy todir="${build}/addon/data" failonerror="false">
+      <fileset dir="data"/>
+    </copy>
+    <copy file="README.md" todir="${build}/addon"/>
+    <copy file="JAVA_CLASSES.md" todir="${build}/addon"/>
     <zip destfile="${dist}/${pkgname}.v${version}.zip" basedir="${build}/addon"/>
   </target>
 
