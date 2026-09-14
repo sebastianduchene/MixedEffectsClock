@@ -307,15 +307,28 @@ by about a third at the top, which is why this is documented rather than matched
 | `examples/` | generators and small XMLs, one per validation stage |
 | `validation/` | scoring scripts, written expectations, the figures, and `ANALYSES.md`, which records every run and the command that rebuilds it |
 | `data/` | the small datasets the examples need; see `data/README.md` |
+| `test/` | 15 JUnit tests over the Java, 10 over the generators |
+| `skills/` | a Claude Code skill for setting the model up, and a minimal runnable template |
+
+## The skill, and the shortest correct example
+
+`skills/mixed-effects-clock-beast2/` is a [Claude Code](https://claude.com/claude-code)
+skill covering the setup: the model and how each term maps to XML, the wiring that cannot be
+skipped, the dispersion conversion, the Mascot grid arithmetic, and a triage table for the
+silent failures. Install it with
+
+    ln -s "$PWD/skills/mixed-effects-clock-beast2" ~/.claude/skills/
+
+Its `templates/me_clock_minimal.xml` is useful with or without Claude: a complete six-taxon
+analysis that runs on its own, samples the prior, and recovers each prior it declares. It is
+the shortest correct example here, and the quickest check that an installation works.
 
 ## Status
 
-Validated at the XML level against known truth. There are **no unit tests**; `test/` is
-empty. That is a deliberate trade, not an oversight: the failure modes that actually
-occurred here were wiring and caching problems that unit tests on a six-taxon tree would not
-have caught, and every one was found by an end-to-end check with an independent
-recomputation. They are still worth writing as regression protection; see
-[Tests to write](#tests-to-write).
+Validated at the XML level against known truth, and covered by 33 unit tests; see
+[Tests](#tests). The end-to-end checks came first and found every failure that actually
+occurred here, all of them wiring or caching problems that a unit test on a six-taxon tree
+would not have caught. The unit tests were added afterwards as regression protection.
 
 | Check | Result |
 | --- | --- |
@@ -341,7 +354,7 @@ ten-replicate coverage study is the outstanding piece of work.
 ## Tests
 
     ant test                      # 15 JUnit tests over the Java
-    python3 test/test_generators.py   # 10 tests over the XML generators
+    python3 test/test_generators.py   # 18 tests over the generators and the shipped template
 
 Both suites were **mutation tested**: the code was deliberately broken and the tests were
 checked to fail. That matters more than the pass count. Several times during development a
@@ -354,6 +367,9 @@ been shown to go red.
 | clade factor dropped from `getRateForBranch` | 3 Java failures |
 | skyline grid and parameter dimension drift apart | 2 generator failures |
 | calendar grid keeps the `tree` attribute | 1 generator failure |
+| the branch-rate prior removed from the template | 1 generator failure |
+| a scale operator put on the coefficients | 1 generator failure |
+| caching turned back on in the conversion column | 1 generator failure |
 
 **Java, `test/mixedeffectsclock/`.** `DesignMatrixTest` asserts the exact *set* of branches in
 each column, named by the tips below them rather than by node number. Counts are the obvious
@@ -376,6 +392,12 @@ parses and carries exactly its own layers; that every clade carrying a column is
 by `idref` to the clock's own taxon set; that no comment contains a double hyphen; and that
 the feast conversion has caching off.
 
+A second class does the same for the template the skill ships, which is the first XML anyone
+will copy: that it parses, that the clock sits inside the tree likelihood, that the branch
+rates carry their own prior, that every clade is constrained, that the dispersion has ORC's
+joint operator, and that the coefficients get a random walk. Each of those is a failure that
+has actually happened here, and every one of them is silent.
+
 **Still worth adding.** Store and restore across a rejected proposal. A golden test on the
 50-taxon tree in `data/`, which is realistic size rather than a toy. Nothing needing an MCMC:
 the operators are ORC's and BEAST's, and the end-to-end checks in `validation/` cover them
@@ -383,8 +405,6 @@ better than a unit test could.
 
 ## Not done
 
-- No XML yet combining this clock with the Mascot structured coalescent, which is the
-  objective.
 - Never run at real scale; every test is 5,000 or 10,000 sites against a 1.3 Mb target.
 - The dispersion prior is documented rather than matched to BEAST X.
 - No licence chosen. BEAST 2 and ORC are LGPL, which is the obvious candidate.

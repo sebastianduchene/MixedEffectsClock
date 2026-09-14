@@ -141,5 +141,69 @@ class XmlHygiene(unittest.TestCase):
         self.assertIn('useCaching="false"', el)
 
 
+class ShippedTemplate(unittest.TestCase):
+    """
+    The skill's template is the first XML anyone will copy, so the non-negotiables have to
+    be in it. Each assertion here is a failure that has actually happened, and every one of
+    them is silent: the run finishes and the numbers look plausible.
+    """
+
+    def setUp(self):
+        path = os.path.join(HERE, "..", "skills", "mixed-effects-clock-beast2",
+                            "templates", "me_clock_minimal.xml")
+        with open(path) as fh:
+            self.xml = fh.read()
+        self.root = ET.fromstring(self.xml)
+
+    def test_it_parses(self):
+        self.assertEqual("beast", self.root.tag)
+
+    def test_the_clock_is_inside_the_tree_likelihood(self):
+        """In a logger instead, it is never told the tree moved and its design goes stale."""
+        lik = self.root.find(".//distribution[@id='likelihood']")
+        self.assertIsNotNone(lik)
+        self.assertIsNotNone(lik.find("branchRateModel"))
+
+    def test_the_branch_rates_carry_a_prior(self):
+        """Without it ucldStdev answers only to its own prior, the joint move is unbalanced,
+        and the dispersion climbs away."""
+        pri = self.root.find(".//distribution[@id='ratesPrior']")
+        self.assertIsNotNone(pri, "no Prior on @rates")
+        self.assertEqual("@rates", pri.get("x"))
+
+    def test_every_clade_is_constrained_by_idref_to_the_clock_taxonset(self):
+        clades = self.root.findall(".//clade")
+        self.assertTrue(clades)
+        declared = {c.find("taxonset").get("id") for c in clades}
+        constrained = {t.get("idref")
+                       for m in self.root.findall(".//distribution")
+                       if "MRCAPrior" in (m.get("spec") or "")
+                       and m.get("monophyletic") == "true"
+                       for t in m.findall("taxonset")}
+        self.assertEqual(declared, declared & constrained,
+                         "unconstrained design columns: %s" % (declared - constrained))
+
+    def test_the_dispersion_has_the_orc_joint_operator(self):
+        specs = [o.get("spec") for o in self.root.findall(".//operator")]
+        self.assertIn("orc.consoperators.UcldScalerOperator", specs)
+
+    def test_the_coefficients_get_a_random_walk_not_a_scaler(self):
+        """They are log scale and cross zero, so a scale operator cannot move them past it."""
+        ops = [o.get("spec") for o in self.root.findall(".//operator")
+               if o.get("parameter") == "@coefficient"]
+        self.assertTrue(ops, "nothing operates on @coefficient")
+        for spec in ops:
+            self.assertIn("RandomWalk", spec)
+
+    def test_the_feast_conversion_never_caches(self):
+        el = re.search(r'<log[^>]*ExpCalculator[^>]*>', self.xml).group(0)
+        self.assertIn('useCaching="false"', el)
+
+    def test_no_double_hyphen_inside_a_comment(self):
+        bad = [m.group(0)[:70] for m in re.finditer(r'<!--.*?-->', self.xml, re.S)
+               if "--" in m.group(0)[4:-3]]
+        self.assertEqual([], bad)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
