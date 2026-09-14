@@ -1,0 +1,184 @@
+# MixedEffectsClock
+
+A BEAST 2 package implementing the mixed-effects molecular clock of Bletsa et al. (2019),
+so that it can be run together with the Mascot structured coalescent and the targeted tree
+operators.
+
+Version 0.0.1. Working and validated against known truth; not yet used for a published
+analysis. See [Status](#status) for exactly what has and has not been tested.
+
+## Why it exists
+
+BEAST X already has this clock. BEAST 2 does not, and no combination of existing BEAST 2
+components can express it. A survey of all 26 packages installed on the development machine
+found eight concrete branch-rate models, none of them keyed to clades, and every one
+declares its per-branch rate vector as a *parameter* rather than a computed *function*, so
+a rate vector assembled from other parts cannot be connected. What BEAST 2 offers and
+BEAST X does not is the Mascot structured coalescent alongside the targeted operators.
+Running this clock with that tree prior is the reason the package exists.
+
+## The model
+
+Branch rates follow a log-link generalised linear model:
+
+    log r_i  =  beta_0  +  sum_k X_ik beta_k  +  eps_i,      eps_i ~ Normal(0, sigma^2)
+
+`X_ik` is 1 when branch *i* belongs to clade *k* and 0 otherwise. Exponentiating, a branch
+rate is a background rate, times a fold change for each clade the branch belongs to, times
+a per-branch random deviation:
+
+    r_i  =  exp(beta_0) * prod_k exp(beta_k)^X_ik * exp(eps_i)
+
+How that maps onto the XML:
+
+| Model term | Where it lives |
+| --- | --- |
+| `exp(beta_0)`, the background rate | the inherited `clock.rate` |
+| `beta_k`, log fold changes | the `coefficient` parameter, one entry per design column |
+| `X_ik`, the design matrix | one `CladeDesign` element per column |
+| `exp(eps_i)` | the inherited per-branch `rates`, from a mean-one lognormal |
+| `sigma` | the log-scale standard deviation of that lognormal |
+
+The coefficients are unbounded, so a clade can be slower than background as well as faster.
+There is no separate intercept parameter: `clock.rate` carries it, which is what keeps the
+standard up-and-down operators meaningful.
+
+## Building
+
+BEAST 2.7 class files are Java 17, so a JDK 17 or newer is required; a Java 11 compiler
+fails with `class file has wrong version 61.0`. The build finds a suitable JDK by itself if
+one is in a usual place, and takes `-Djdk.home=/path/to/jdk` otherwise.
+
+    ant install
+
+That compiles with `--release 17`, jars the package, and unpacks it into
+`~/.beast/2.7/MixedEffectsClock`, where BEAST finds it beside Mascot, ORC and TargetedBeast.
+Other targets: `build` (jar only), `addon` (installable zip), `clean`.
+
+Requires BEAST 2.7.7 or newer, and ORC for the dispersion operator described below.
+
+## Quick start
+
+Every example runs from this repository alone, with no external data:
+
+    cd examples
+    python3 gen_sim_re_slowdown.py > sim.xml      # 50 taxa, known truth
+    beast -overwrite -seed 17 sim.xml
+    python3 ../validation/check_sim_re.py sim     # scores it against the truth
+
+`examples/design_check_6taxon.xml` is the smallest thing to read first: a six-taxon tree
+whose design can be counted by hand.
+
+## A minimal clock block
+
+```xml
+<branchRateModel id="clock" spec="mixedeffectsclock.MixedEffectsClockModel"
+                 tree="@Tree" rates="@rates" clock.rate="@clockRate"
+                 coefficient="@coefficient">
+  <distr spec="beast.base.inference.distribution.LogNormalDistributionModel"
+         S="@ucldStdev" meanInRealSpace="true">
+    <parameter estimate="false" name="M">1.0</parameter>
+  </distr>
+
+  <clade id="hyper" spec="mixedeffectsclock.CladeDesign" category="0" includeStem="true">
+    <taxonset idref="taxa.hyper"/>
+  </clade>
+  <!-- one clade element per design column; several may share a category -->
+</branchRateModel>
+```
+
+`CladeDesign` takes `taxonset`, `category` (which coefficient it loads on), `includeStem`
+(also assign the branch subtending the clade's ancestor) and `excludeClade` (assign only
+that stem). Several elements sharing a category share one coefficient, which is how
+disjoint groups of branches get a single shared effect.
+
+## Three things that will bite you
+
+**The clock must sit inside the posterior.** BEAST invalidates a cache only for objects
+reachable from the posterior, so a clock declared inside a logger is never told the tree
+moved and its design silently goes stale. Hang it off a tree likelihood. For a prior-only
+run, keep the likelihood but make the alignment entirely ambiguous: the likelihood is then
+flat and the wiring stays correct.
+
+**Constrain every clade that carries a column**, and point the constraint at the clock's own
+`TaxonSet` by `idref` rather than redeclaring the taxa. Without monophyly a clade's ancestor
+subsumes unrelated branches, columns overlap, and a branch in two columns carries the *sum*
+of their coefficients. A second copy of the taxa lets the constraint and the design drift
+apart with nothing to complain about. `DesignLogger` writes `nPainted.multiple`, which must
+be 0 for disjoint clades, and a `monophyletic.<clade>` indicator per clade.
+
+**The dispersion needs ORC's joint scaler**, `orc.consoperators.UcldScalerOperator`, not a
+bare one. Changing the dispersion changes the prior density of every rate at once, so a move
+touching it alone is nearly always rejected. Measured over the same 5,000,000 states:
+
+| Operator on the dispersion | ESS | posterior sd, prior is 0.333 |
+| --- | --- | --- |
+| bare `BactrianScaleOperator` | 224 | 0.289, not converged |
+| ORC `UcldScalerOperator` | 8875 | 0.336 |
+
+The coefficients need a random walk rather than a scale operator, since they are log-scale
+and cross zero. Every parameter must also start inside its prior: an intercept left at 2e-3
+under a Gamma with mean 7e-9 makes the density underflow to NaN and BEAST cannot initialise.
+
+## The dispersion is not the BEAST X quantity
+
+`ucldStdev` here is a **log-scale standard deviation**, which is the sigma of the published
+model. BEAST X's `branchRates.scale` is a **real-space coefficient of variation**. Convert:
+
+    sigma = sqrt(log(1 + scale^2))        scale = sqrt(exp(sigma^2) - 1)
+
+They agree to a couple of percent below about 0.3 and diverge badly above 1. Comparing the
+two columns directly is wrong.
+
+Note also that under a mixed-effects clock the dispersion is a **residual**, left after the
+named clades have taken their share. A small value is evidence the design is working, not
+evidence the tree is clocklike.
+
+## What is in here
+
+| Path | Contents |
+| --- | --- |
+| `JAVA_CLASSES.md` | what each class does, written for someone who has not followed the work |
+| `src/mixedeffectsclock/MixedEffectsClockModel.java` | the clock; a subclass of the stock relaxed clock |
+| `src/mixedeffectsclock/CladeDesign.java` | one design-matrix entry |
+| `src/mixedeffectsclock/DesignLogger.java` | branch counts, monophyly indicators, stale-cache check |
+| `version.xml` | package metadata **and service registration**; every public class must be listed or BEAST reports it as missing |
+| `build.xml` | ant build |
+| `examples/` | generators and small XMLs, one per validation stage |
+| `validation/` | scoring scripts, written expectations, and the resulting figures |
+| `data/` | the small datasets the examples need; see `data/README.md` |
+
+## Status
+
+Validated at the XML level against known truth. There are **no unit tests**; `test/` is
+empty. That is a deliberate trade, not an oversight: the failure modes that actually
+occurred here were wiring and caching problems that unit tests on a six-taxon tree would not
+have caught, and every one was found by an end-to-end check with an independent
+recomputation.
+
+| Check | Result |
+| --- | --- |
+| Design matrix vs the BEAST X implementation | reproduces 3, 25, 51, 3, 3 with 7 background, and the legacy stem configuration too |
+| Design under a moving topology | correct at every state, no stale cache entries |
+| Branch rates, including a slowdown and overlapping columns | exact |
+| Prior recovery, all five parameters | passes, ESS near 9000 |
+| 50-taxon local-clock simulation | background rate, coefficient and design all recovered |
+| Random effect plus slowdown simulation | both coefficients recovered; see below |
+| Compatibility with the full ORC operator suite | acceptance 0.40 to 0.48 |
+
+**One known behaviour, and it is not a defect.** On a simulation with a genuine random
+effect, estimating the tree and the rate together gave a background rate 21% high, a tree
+15% short and a dispersion 35% low, while fitting the total substitutions per site to within
+0.2%. Fixing the tree at truth recovers the rate and dispersion; fixing the rate at truth
+recovers the tree and dispersion. So neither half is wrong: this is joint identifiability of
+rate against time, a general property of relaxed clocks. It is one replicate, and a
+ten-replicate coverage study is the outstanding piece of work.
+
+## Not done
+
+- No XML yet combining this clock with the Mascot structured coalescent, which is the
+  objective.
+- Never run at real scale; every test is 5,000 or 10,000 sites against a 1.3 Mb target.
+- The dispersion prior is documented rather than matched to BEAST X.
+- No licence chosen. BEAST 2 and ORC are LGPL, which is the obvious candidate.
+- No BEAUti integration; XMLs are written by the generators in `examples/`.

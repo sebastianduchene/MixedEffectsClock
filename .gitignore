@@ -1,0 +1,31 @@
+# Compiler and packaging output
+build/
+
+# BEAST run output. These are large and regenerable: the 36 MB of traces and tree
+# files this folder accumulated during validation is why they are excluded from the
+# first commit rather than removed later.
+*.log
+*.trees
+*.state
+*.out
+*.err
+*.ops
+*.chkpt
+*.citations.txt
+
+# Generated XMLs. Every one is produced by a generator in examples/, and the larger
+# ones carry an alignment inline. Rebuild them, do not commit them.
+validation/*.xml
+examples/*_run.xml
+
+# Editor and OS noise
+*~
+.DS_Store
+
+# Derived intermediates from check_rates.py, regenerated on every run. The PDFs are
+# kept, so a reviewer can see the result without running anything.
+validation/*_plot.newick
+validation/*_plot_all.newick
+validation/*_nodes.csv
+validation/*_nodes_all.csv
+validation/*_cols.csv

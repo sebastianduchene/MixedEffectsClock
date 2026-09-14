@@ -1,0 +1,112 @@
+<!--
+  Which branch carries which rate: a single-state readout.
+
+  Same 6-taxon tree and same clade design as design_check_6taxon.xml, but with an
+  intercept and three coefficients that are all different from the other examples, and
+  all chosen so the four rate classes are far apart and unmistakable in the output.
+
+  Starting values
+    clockRate (the intercept, exp(beta_0))          2e-3
+    coefficient[0] = log 4                          fold change  4
+    coefficient[1] = log 0.2                        fold change  0.2   (a slowdown)
+    coefficient[2] = log 10                         fold change  10
+    every branch multiplier                         1, so the random effect is switched off
+
+  Expected branch rates, all exact
+    t1, t2 and their stem P1     column 0    2e-3 x 4    = 8e-3
+    t3, t4                       column 1    2e-3 x 0.2  = 4e-4
+    stem of (t5,t6)              column 2    2e-3 x 10   = 2e-2
+    P2, X, t5, t6                background  2e-3
+    root                         no branch   1
+
+  ON OPERATORS. This file was asked for with none at all. BEAST accepts that, but only
+  warns and then never logs a state: with zero operators the chain produces headers and
+  no rows, at any chain length. So there is exactly one operator here and it moves a
+  parameter called "spare" that nothing else reads. Every quantity that enters a rate
+  stays exactly at the value written above, which is the intent. Do not point this
+  operator at the coefficient, the intercept or the rates: BEAST applies a proposal even
+  at chainLength=0, and the readout would then not be the values you set.
+
+  Run:  beast -overwrite -seed 1 branch_rate_map_6taxon.xml
+        rates are in branch_rate_map_6taxon.trees, design counts in the .log
+-->
+<beast namespace="beast.base.evolution.alignment:beast.base.evolution.tree:beast.base.inference:beast.base.inference.parameter"
+       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1"
+       version="2.7">
+
+  <run id="mcmc" spec="beast.base.inference.MCMC" chainLength="0">
+
+    <state id="state" spec="beast.base.inference.State">
+      <tree id="Tree" spec="beast.base.evolution.tree.Tree" name="stateNode">
+        <taxonset id="TaxonSet" spec="beast.base.evolution.alignment.TaxonSet">
+          <taxon id="t1" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t2" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t3" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t4" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t5" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t6" spec="beast.base.evolution.alignment.Taxon"/>
+        </taxonset>
+      </tree>
+      <parameter id="coefficient" spec="beast.base.inference.parameter.RealParameter" dimension="3" name="stateNode">1.3862943611198906 -1.6094379124341003 2.302585092994046</parameter>
+      <parameter id="rates"       spec="beast.base.inference.parameter.RealParameter" dimension="10" lower="0.0" name="stateNode">1.0</parameter>
+      <parameter id="ucldStdev"   spec="beast.base.inference.parameter.RealParameter" lower="0.0" name="stateNode">0.3</parameter>
+      <parameter id="clockRate"   spec="beast.base.inference.parameter.RealParameter" lower="0.0" name="stateNode">2.0E-3</parameter>
+      <parameter id="spare"       spec="beast.base.inference.parameter.RealParameter" name="stateNode">1.0</parameter>
+    </state>
+
+    <init id="startingTree" spec="beast.base.evolution.tree.TreeParser"
+          initial="@Tree" taxonset="@TaxonSet" IsLabelledNewick="true" adjustTipHeights="false"
+          newick="(((t1:1,t2:1):1,(t3:1,t4:1):1):1,(t5:2,t6:2):1):0.0;"/>
+
+    <distribution id="posterior" spec="beast.base.inference.CompoundDistribution">
+      <distribution id="coefficientPrior" spec="beast.base.inference.distribution.Prior" x="@coefficient">
+        <distr spec="beast.base.inference.distribution.Normal">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="mean">0.0</parameter>
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="sigma">2.0</parameter>
+        </distr>
+      </distribution>
+    </distribution>
+
+    <operator id="dummy" spec="beast.base.inference.operator.kernel.BactrianRandomWalkOperator"
+              parameter="@spare" scaleFactor="0.1" weight="1.0"/>
+
+    <logger id="tracelog" spec="beast.base.inference.Logger" fileName="$(filebase).log" logEvery="1">
+      <log idref="posterior"/>
+      <!-- The clock is not part of the posterior here, and MCMC has no
+           branchRateModel input, so it is declared inside the logger that reads it. -->
+      <log id="designLog" spec="mixedeffectsclock.DesignLogger">
+        <clock id="clock" spec="mixedeffectsclock.MixedEffectsClockModel"
+               tree="@Tree" rates="@rates" clock.rate="@clockRate" coefficient="@coefficient">
+          <distr id="rateDistr" spec="beast.base.inference.distribution.LogNormalDistributionModel"
+                 S="@ucldStdev" meanInRealSpace="true">
+            <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="M">1.0</parameter>
+          </distr>
+
+          <clade id="cladeA" spec="mixedeffectsclock.CladeDesign" category="0" includeStem="true">
+            <taxonset id="taxa.A" spec="beast.base.evolution.alignment.TaxonSet">
+              <taxon idref="t1"/>
+              <taxon idref="t2"/>
+            </taxonset>
+          </clade>
+
+          <clade id="cladeB" spec="mixedeffectsclock.CladeDesign" category="1" includeStem="false">
+            <taxonset id="taxa.B" spec="beast.base.evolution.alignment.TaxonSet">
+              <taxon idref="t3"/>
+              <taxon idref="t4"/>
+            </taxonset>
+          </clade>
+
+          <clade id="cladeC" spec="mixedeffectsclock.CladeDesign" category="2" includeStem="true" excludeClade="true">
+            <taxonset id="taxa.C" spec="beast.base.evolution.alignment.TaxonSet">
+              <taxon idref="t5"/>
+              <taxon idref="t6"/>
+            </taxonset>
+          </clade>
+        </clock>
+      </log>
+    </logger>
+    <logger id="treelog" spec="beast.base.inference.Logger" fileName="$(filebase).trees" logEvery="1" mode="tree">
+      <log id="treeWithRates" spec="beast.base.evolution.TreeWithMetaDataLogger" tree="@Tree" branchratemodel="@clock"/>
+    </logger>
+  </run>
+</beast>

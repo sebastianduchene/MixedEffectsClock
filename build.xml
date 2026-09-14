@@ -1,0 +1,87 @@
+<project name="MixedEffectsClock" default="build" basedir=".">
+
+  <property name="pkgname"  value="MixedEffectsClock"/>
+  <property name="version"  value="0.0.1"/>
+  <property name="src"      location="src"/>
+  <property name="build"    location="build"/>
+  <property name="dist"     location="build/dist"/>
+  <property name="beast.user" location="${user.home}/.beast/2.7"/>
+
+  <!-- BEAST 2.7 class files are Java 17, so a JDK 17 or newer is required. The
+       system javac is 11 and cannot read them. Candidates are tried in order and
+       the first one found wins; override with -Djdk.home=/path/to/jdk.
+       Do NOT reduce these checks to a bare <available file="${jdk.home}/bin/javac"/>:
+       with the property unset the path collapses to /bin/javac, and /bin is a
+       symlink to /usr/bin here, so the check passes and javac 11 is used. -->
+  <property name="jdk.home" value=""/>
+
+  <condition property="javac.home" value="${jdk.home}">
+    <and>
+      <not><equals arg1="${jdk.home}" arg2=""/></not>
+      <available file="${jdk.home}/bin/javac"/>
+    </and>
+  </condition>
+  <condition property="javac.home" value="${user.home}/phyloApps/jdk-25.0.4.1+1">
+    <available file="${user.home}/phyloApps/jdk-25.0.4.1+1/bin/javac"/>
+  </condition>
+  <condition property="javac.home" value="${user.home}/miniconda3">
+    <available file="${user.home}/miniconda3/bin/javac"/>
+  </condition>
+
+  <path id="beast.classpath">
+    <fileset dir="${beast.user}/BEAST.base/lib" includes="*.jar"/>
+    <fileset dir="${beast.user}/BEAST.app/lib"  includes="*.jar"/>
+  </path>
+
+  <target name="check-jdk">
+    <fail unless="javac.home">
+No JDK 17 or newer found.
+
+BEAST 2.7 class files are Java 17 (class file major version 61). The javac on the
+PATH here is 11 and fails with "class file has wrong version 61.0". The runtime
+bundled at ~/phyloApps/beast2.7.7/jre IS Java 17 but is a JRE and ships no compiler.
+
+Point the build at a JDK explicitly:
+    ant -Djdk.home=/path/to/jdk build
+    </fail>
+    <echo>Compiling with ${javac.home}</echo>
+  </target>
+
+  <target name="clean" description="remove build output">
+    <delete dir="${build}"/>
+  </target>
+
+  <target name="compile" depends="check-jdk">
+    <mkdir dir="${build}/classes"/>
+    <javac srcdir="${src}" destdir="${build}/classes"
+           fork="true" executable="${javac.home}/bin/javac"
+           release="17" includeantruntime="false" debug="true">
+      <classpath refid="beast.classpath"/>
+      <compilerarg value="-Xlint:all"/>
+    </javac>
+  </target>
+
+  <target name="build" depends="compile" description="build the package jar">
+    <mkdir dir="${dist}"/>
+    <jar destfile="${dist}/${pkgname}.jar" basedir="${build}/classes"/>
+  </target>
+
+  <target name="addon" depends="build" description="assemble an installable package">
+    <mkdir dir="${build}/addon/lib"/>
+    <mkdir dir="${build}/addon/examples"/>
+    <copy file="${dist}/${pkgname}.jar" todir="${build}/addon/lib"/>
+    <copy file="version.xml"            todir="${build}/addon"/>
+    <copy todir="${build}/addon/examples" failonerror="false">
+      <fileset dir="examples"/>
+    </copy>
+    <zip destfile="${dist}/${pkgname}.v${version}.zip" basedir="${build}/addon"/>
+  </target>
+
+  <target name="install" depends="addon"
+          description="install into the user's BEAST 2 package directory">
+    <mkdir dir="${beast.user}/${pkgname}"/>
+    <unzip src="${dist}/${pkgname}.v${version}.zip" dest="${beast.user}/${pkgname}"/>
+    <echo>Installed to ${beast.user}/${pkgname}</echo>
+  </target>
+
+</project>

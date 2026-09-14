@@ -1,0 +1,136 @@
+<!--
+  Does the design stay attached to the right branches when the TOPOLOGY moves?
+
+  A copy of branch_rate_map_6taxon.xml with BEAUti's standard tree move set added. Only
+  the tree gets operators. The intercept, the three coefficients, the branch multipliers
+  and the dispersion are frozen at their starting values, so a branch rate can only
+  change because the design was remapped onto a new tree.
+
+    clockRate (the intercept)              2e-3
+    coefficient = log 4, log 0.2, log 10   fold changes 4, 0.2 and 10
+    every branch multiplier                1
+
+  On the starting topology the branch rates take exactly four values:
+    8e-3   column 0, the clade {t1,t2} and its stem
+    4e-4   column 1, the clade {t3,t4}, stem excluded
+    2e-2   column 2, the stem of {t5,t6} only
+    2e-3   background
+
+  Once the topology moves the clades can overlap, and a branch inside two columns gets
+  the SUM of their coefficients, so the fold change is the PRODUCT. Combinations such as
+  x0.8 (4 times 0.2) and x8 (4 times 0.2 times 10) then appear. That is the model
+  behaving correctly, not a fault, and the checking script accounts for it.
+
+  The number of branches in each class CAN change, since no monophyly is imposed. That
+  is the point. The check is that each branch still carries the rate its position implies.
+
+  The design logger runs with validate="true", so each sample also reports how many
+  design entries disagree with a fresh recomputation. That column must stay at 0.
+
+  NOTE the dummy alignment and tree likelihood. They carry no scientific meaning. They
+  exist so the clock sits inside the posterior: BEAST invalidates a cache only for
+  objects reachable from the posterior, so a clock declared inside a logger never learns
+  the tree moved. Without them this file reports non zero design.staleEntries at every
+  state while the branch counts look perfectly normal.
+
+  Run:  beast -overwrite -seed 3 topology_rate_map_6taxon.xml
+-->
+<beast namespace="beast.base.evolution.alignment:beast.base.evolution.tree:beast.base.inference:beast.base.inference.parameter"
+       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1"
+       version="2.7">
+
+  <!-- Dummy alignment, content irrelevant. See the note in the header. -->
+  <data id="alignment" spec="beast.base.evolution.alignment.Alignment" name="alignment" dataType="nucleotide">
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t1" totalcount="4" value="ACCGTTGAGTCCCATTCTTTAGAGGCTCAGGTTTGACGATTCGACGAACGGCTAGGAACAATTACAATTTACTAGGAGAACACCAAATTCACTAGGTACCCTCTTTGCAGGTCACAGTCATCGAGTCGCGGTGACCTTCGCCTCAGGTGTATTTCTAGCATGGTGTCTGATTGCGTCTAACGGGCTCGGATCAATGTCTA"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t2" totalcount="4" value="AGGTATGCTGTCCATACTATGAATATAGAAGCCGGTTATGAAAACCACAGCCAGCGGTTAACTGCCTGACACTGCGAACCCAAGAAAGAAGACGTGCCTCCCGAGCCGTATACTTCGTAGGCCTTAATTCGACGACGCTGTAATGGCAACACTGGGCAAAAGTGGGCCAAGGTACGCTCGACGTACTAATACTGTCCTGC"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t3" totalcount="4" value="ATCAAATCCGCACGTACTTCAGACCTAGGCGCATAGCGGTTCTCTTACCCCCTCGTTACGACCGTCGAATACGTTCGAGCTCGGGACGTGTTAACCAGAGTCCGGCAAAACCCACGCAGGTTAGGGGCCTTGATTCTTCCTTCCACTGGAAAGAAAGCCTCGAGCACCGGTCTCCTCGCGGAAGTAAGGAAACTTAATAT"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t4" totalcount="4" value="TCAAGCTCTTGTAGATGTTCTAATAAGAAAGGGAATCTTCCCAAGGAATACTATTAAGGTAACCGGTCTTCGTCCTGAGATAAGCATGCTCGTCCCCGACTTAACGTCACAGGTATTCTGAGAACTATGATGAACAAACTTGTGGTGAGTGGCTCCACAATCAAACAACGCAAATAGAATGATCAGATGAGGGCGGATGA"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t5" totalcount="4" value="GCCAAGCTGTCAAAATTCCACAATATTATGTTGGTTTATGGCGTACCAACGTAACCTACAAAGTCATCCCCCAGAGATTGGCCCGTATTACCGTCGTTGGGGAATCAAACGTGGATAATACGTAATTGTCTATTTGCTCATTACATCCCATGCGTCGATGTTGAAGCCAAGGTTGTACTTTGGTTCATTATCATCTAATG"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t6" totalcount="4" value="CTGAAACCGCGGGTTCTGCCGTGCGTGCTTGCCGTTAGAATTAGCCGATTAGAACCAAATAGTTTGGCTTCCTCCTTGCCTAGAGATAGTGCCCATCGCGGACTACAATGTGACGGAGGAGGCACGAAGGAACTGACTACTATAGGGAATACTTGCGCTTAATGCGAACGGACCCGTTTGCCTCCTAACCCTTGGGAAGG"/>
+  </data>
+
+  <run id="mcmc" spec="beast.base.inference.MCMC" chainLength="10000">
+
+    <state id="state" spec="beast.base.inference.State">
+      <tree id="Tree" spec="beast.base.evolution.tree.Tree" name="stateNode">
+        <taxonset id="TaxonSet" spec="beast.base.evolution.alignment.TaxonSet">
+          <taxon id="t1" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t2" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t3" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t4" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t5" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t6" spec="beast.base.evolution.alignment.Taxon"/>
+        </taxonset>
+      </tree>
+      <parameter id="coefficient" spec="beast.base.inference.parameter.RealParameter" dimension="3" name="stateNode">1.3862943611198906 -1.6094379124341003 2.302585092994046</parameter>
+      <parameter id="rates"       spec="beast.base.inference.parameter.RealParameter" dimension="10" lower="0.0" name="stateNode">1.0</parameter>
+      <parameter id="ucldStdev"   spec="beast.base.inference.parameter.RealParameter" lower="0.0" name="stateNode">0.3</parameter>
+      <parameter id="clockRate"   spec="beast.base.inference.parameter.RealParameter" lower="0.0" name="stateNode">2.0E-3</parameter>
+    </state>
+
+    <init id="startingTree" spec="beast.base.evolution.tree.TreeParser"
+          initial="@Tree" taxonset="@TaxonSet" IsLabelledNewick="true" adjustTipHeights="false"
+          newick="(((t1:1,t2:1):1,(t3:1,t4:1):1):1,(t5:2,t6:2):1):0.0;"/>
+
+    <distribution id="posterior" spec="beast.base.inference.CompoundDistribution">
+      <distribution id="coefficientPrior" spec="beast.base.inference.distribution.Prior" x="@coefficient">
+        <distr spec="beast.base.inference.distribution.Normal">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="mean">0.0</parameter>
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="sigma">2.0</parameter>
+        </distr>
+      </distribution>
+      <distribution id="likelihood" spec="beast.base.evolution.likelihood.TreeLikelihood" data="@alignment" tree="@Tree">
+        <siteModel id="siteModel" spec="beast.base.evolution.sitemodel.SiteModel">
+          <substModel id="jc" spec="beast.base.evolution.substitutionmodel.JukesCantor"/>
+        </siteModel>
+          <branchRateModel id="clock" spec="mixedeffectsclock.MixedEffectsClockModel"
+                 tree="@Tree" rates="@rates" clock.rate="@clockRate" coefficient="@coefficient">
+            <distr id="rateDistr" spec="beast.base.inference.distribution.LogNormalDistributionModel"
+                   S="@ucldStdev" meanInRealSpace="true">
+              <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="M">1.0</parameter>
+            </distr>
+
+            <clade id="cladeA" spec="mixedeffectsclock.CladeDesign" category="0" includeStem="true">
+              <taxonset id="taxa.A" spec="beast.base.evolution.alignment.TaxonSet">
+                <taxon idref="t1"/>
+                <taxon idref="t2"/>
+              </taxonset>
+            </clade>
+
+            <clade id="cladeB" spec="mixedeffectsclock.CladeDesign" category="1" includeStem="false">
+              <taxonset id="taxa.B" spec="beast.base.evolution.alignment.TaxonSet">
+                <taxon idref="t3"/>
+                <taxon idref="t4"/>
+              </taxonset>
+            </clade>
+
+            <clade id="cladeC" spec="mixedeffectsclock.CladeDesign" category="2" includeStem="true" excludeClade="true">
+              <taxonset id="taxa.C" spec="beast.base.evolution.alignment.TaxonSet">
+                <taxon idref="t5"/>
+                <taxon idref="t6"/>
+              </taxonset>
+            </clade>
+          </branchRateModel>
+      </distribution>
+    </distribution>
+
+
+    <!-- BEAUti's standard tree move set, and nothing else. The intercept, the three
+         coefficients, the branch multipliers and the dispersion all stay fixed, so any
+         change in a branch rate can only come from the design being remapped. -->
+    <operator id="treeRootScaler" spec="beast.base.evolution.operator.kernel.BactrianScaleOperator" tree="@Tree" rootOnly="true" scaleFactor="0.1" upper="10.0" weight="3.0"/>
+    <operator id="uniformHeights" spec="beast.base.evolution.operator.kernel.BactrianNodeOperator" tree="@Tree" weight="30.0"/>
+    <operator id="subtreeSlide"   spec="beast.base.evolution.operator.kernel.BactrianSubtreeSlide" tree="@Tree" weight="15.0"/>
+    <operator id="narrowExchange" spec="beast.base.evolution.operator.Exchange" tree="@Tree" weight="15.0"/>
+    <operator id="wideExchange"   spec="beast.base.evolution.operator.Exchange" tree="@Tree" isNarrow="false" weight="3.0"/>
+    <operator id="wilsonBalding"  spec="beast.base.evolution.operator.WilsonBalding" tree="@Tree" weight="3.0"/>
+
+    <logger id="tracelog" spec="beast.base.inference.Logger" fileName="$(filebase).log" logEvery="1000">
+      <log idref="posterior"/>
+      <log id="designLog" spec="mixedeffectsclock.DesignLogger" validate="true" clock="@clock"/>
+    </logger>
+    <logger id="treelog" spec="beast.base.inference.Logger" fileName="$(filebase).trees" logEvery="1000" mode="tree">
+      <log id="treeWithRates" spec="beast.base.evolution.TreeWithMetaDataLogger" tree="@Tree" branchratemodel="@clock"/>
+    </logger>
+  </run>
+</beast>
