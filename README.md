@@ -112,6 +112,21 @@ Every example runs from this repository alone, with no external data:
 `examples/design_check_6taxon.xml` is the smallest thing to read first: a six-taxon tree
 whose design can be counted by hand.
 
+The simulation generator has two options that stack, so one script produces every
+configuration:
+
+| Command | Tree moves | Tree prior |
+| --- | --- | --- |
+| `gen_sim_re_slowdown.py` | BEAUti's standard set | exponential-growth coalescent |
+| `... --targeted` | targetedbeast | exponential-growth coalescent |
+| `... --targeted --mascot` | targetedbeast | **Mascot**, two demes, one unsampled |
+
+The last is the configuration the package exists for: the mixed-effects clock, the targeted
+tree proposals, ORC's rate moves and a structured coalescent with a ghost deme, all at once.
+Note that the simulated data were not generated under population structure, so Mascot is
+deliberately mis-specified there; the run tests that the stack holds together and that the
+clock still recovers its coefficients, not that the demes mean anything.
+
 ## A minimal clock block
 
 ```xml

@@ -1,0 +1,2 @@
+taxa=50 sites=10000 branches=98 fastClade=2 fastSisterStem=6
+slowClade=10 taxa

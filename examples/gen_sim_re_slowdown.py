@@ -33,6 +33,10 @@ import re, sys, os
 # --targeted swaps BEAUti's tree moves for the targetedbeast set the lepromatosis
 # BEAST 2 builds use, and adds the edge weights they need.
 TARGETED = "--targeted" in sys.argv
+# --mascot swaps the exponential-growth coalescent for a Mascot structured coalescent
+# with two demes, "outbreak" holding every sample and "ghost" unsampled. With --targeted
+# this is the full stack: mixed-effects clock, targeted tree moves, ORC, and Mascot.
+MASCOT   = "--mascot" in sys.argv
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM  = os.path.join(HERE, "..", "data")
@@ -96,7 +100,7 @@ w('  The sequences were simulated under Jukes-Cantor, but HKY + gamma is fitted,
 w('  the BEAST X run. So kappa should sit near 1 and the gamma shape should be large.')
 w('-->')
 w('<beast namespace="%s.evolution.alignment:%s.evolution.tree:%s.inference"' % (P, P, P))
-w('       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1:feast v10.6.1%s" version="2.7">' % (":TargetedBeast v2.0.0" if TARGETED else ""))
+w('       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1:feast v10.6.1%s%s" version="2.7">' % (":TargetedBeast v2.0.0" if TARGETED else "", ":Mascot v3.0.7" if MASCOT else ""))
 w('')
 w('  <data id="alignment" spec="%s.evolution.alignment.Alignment" name="alignment" dataType="nucleotide">' % P)
 for n, s in seqs:
@@ -119,8 +123,19 @@ w('      <parameter id="ucldStdev"   spec="%s.inference.parameter.RealParameter"
 w('      <parameter id="kappa"       spec="%s.inference.parameter.RealParameter" lower="0.0" name="stateNode">2.0</parameter>' % P)
 w('      <parameter id="gammaShape"  spec="%s.inference.parameter.RealParameter" lower="0.1" name="stateNode">1.0</parameter>' % P)
 w('      <parameter id="freqs"       spec="%s.inference.parameter.RealParameter" dimension="4" lower="0.0" upper="1.0" name="stateNode">0.25</parameter>' % P)
-w('      <parameter id="popSize"     spec="%s.inference.parameter.RealParameter" lower="0.0" name="stateNode">1.0</parameter>' % P)
-w('      <parameter id="growthRate"  spec="%s.inference.parameter.RealParameter" name="stateNode">0.0</parameter>' % P)
+if MASCOT:
+    # Ne and migration are scaled to THIS tree, not copied from lepromatosis. That tree is
+    # thousands of years deep with logNe near 7; this one is ~5.5 years, so logNe near 0
+    # (Ne of order 1) and migration near log(0.1) are the sensible starting points.
+    w('      <!-- Mascot skyline: 4 shift values give 3 rate levels, and Skygrowth forces')
+    w('           dimension 5 with the last entry never read. See MEMORY: N shifts -> N-1 levels. -->')
+    for d in ['outbreak','ghost']:
+        w('      <parameter id="SkylineNe.%s" spec="%s.inference.parameter.RealParameter" dimension="5" name="stateNode">0.0</parameter>' % (d, P))
+    for m in ['outbreak_to_ghost','ghost_to_outbreak']:
+        w('      <parameter id="SkylineMig.%s" spec="%s.inference.parameter.RealParameter" dimension="5" name="stateNode">-2.302585</parameter>' % (m, P))
+else:
+    w('      <parameter id="popSize"     spec="%s.inference.parameter.RealParameter" lower="0.0" name="stateNode">1.0</parameter>' % P)
+    w('      <parameter id="growthRate"  spec="%s.inference.parameter.RealParameter" name="stateNode">0.0</parameter>' % P)
 w('    </state>')
 w('')
 w('    <!-- Random coalescent starting tree honouring both monophyly constraints. -->')
@@ -134,11 +149,56 @@ w('      <constraint idref="monophyly.slowClade"/>')
 w('    </init>')
 w('')
 w('    <distribution id="posterior" spec="%s.inference.CompoundDistribution">' % P)
-w('      <distribution id="coalescent" spec="%s.evolution.tree.coalescent.Coalescent">' % P)
-w('        <treeIntervals id="TreeIntervals" spec="%s.evolution.tree.TreeIntervals" tree="@Tree"/>' % P)
-w('        <populationModel id="expGrowth" spec="%s.evolution.tree.coalescent.ExponentialGrowth" popSize="@popSize" growthRate="@growthRate"/>' % P)
-w('      </distribution>')
-for pid, spec, body in [
+if MASCOT:
+    w('      <!-- Two demes. Every sample is in "outbreak"; "ghost" is unsampled, so it cannot')
+    w('           be read off the type trait and must be named in types=. That string is only')
+    w('           honoured when fromBeauti is false, which is its default, so it is NOT written.')
+    w('           StructuredMigrationSkyline, not StructuredSkyline: migration varies over time.')
+    w('           One shared rateShifts object for the dynamics and all four Skygrowths; separate')
+    w('           grids silently collapse the skyline to a constant. -->')
+    w('      <distribution id="Mascot" spec="mascot.distribution.Mascot" tree="@Tree">')
+    w('        <dynamics id="StructuredMigrationSkyline" spec="mascot.dynamics.StructuredMigrationSkyline" types="outbreak ghost">')
+    w('          <NeDynamics id="NeDynamicsList" spec="mascot.util.InitializedNeDynamicsList">')
+    for d in ['outbreak','ghost']:
+        w('            <neDynamics id="NeDynamics.%s" spec="mascot.parameterdynamics.Skygrowth" logNe="@SkylineNe.%s" rateShifts="@rateShifts"/>' % (d,d))
+    w('          </NeDynamics>')
+    w('          <!-- Index order is fixed by the class: 0 is outbreak to ghost, 1 is ghost to')
+    w('               outbreak, both FORWARDS in time. -->')
+    w('          <migrationDynamics id="MigDynamicsList" spec="mascot.util.InitializedNeDynamicsList">')
+    for m in ['outbreak_to_ghost','ghost_to_outbreak']:
+        w('            <neDynamics id="MigDynamics.%s" spec="mascot.parameterdynamics.Skygrowth" logNe="@SkylineMig.%s" rateShifts="@rateShifts"/>' % (m,m))
+    w('          </migrationDynamics>')
+    w('          <rateShifts id="rateShifts" spec="mascot.dynamics.RateShifts" tree="@Tree">0.3333333333 0.6666666667 1 1.5</rateShifts>')
+    w('          <indicators id="indicators" spec="%s.inference.parameter.BooleanParameter" dimension="2" estimate="false">true</indicators>' % P)
+    w('          <typeTrait id="typeTraitSet" spec="mascot.util.InitializedTraitSet" traitname="type"')
+    w('                     value="%s">' % ",".join("%s=outbreak" % t for t in order))
+    w('            <taxa idref="TaxonSet"/>')
+    w('          </typeTrait>')
+    w('        </dynamics>')
+    w('        <structuredTreeIntervals id="StructuredTreeIntervals" spec="mascot.distribution.StructuredTreeIntervals" tree="@Tree"/>')
+    w('      </distribution>')
+    for nm, ctr in [('SkylineNe.outbreak','0.0'),('SkylineNe.ghost','0.0'),
+                    ('SkylineMig.outbreak_to_ghost','-2.302585'),('SkylineMig.ghost_to_outbreak','-2.302585')]:
+        w('      <distribution id="%s.FirstPrior" spec="%s.inference.distribution.Prior">' % (nm, P))
+        w('        <x id="first.%s" spec="mascot.util.First" arg="@%s"/>' % (nm, nm))
+        w('        <distr spec="%s.inference.distribution.Normal">' % P)
+        w('          <parameter spec="%s.inference.parameter.RealParameter" estimate="false" name="mean">%s</parameter>' % (P, ctr))
+        w('          <parameter spec="%s.inference.parameter.RealParameter" estimate="false" name="sigma">2.0</parameter>' % P)
+        w('        </distr>')
+        w('      </distribution>')
+        w('      <distribution id="%s.SmoothPrior" spec="%s.inference.distribution.Prior">' % (nm, P))
+        w('        <x id="diff.%s" spec="mascot.util.Difference" arg="@%s"/>' % (nm, nm))
+        w('        <distr spec="%s.inference.distribution.Normal">' % P)
+        w('          <parameter spec="%s.inference.parameter.RealParameter" estimate="false" name="mean">0.0</parameter>' % P)
+        w('          <parameter spec="%s.inference.parameter.RealParameter" estimate="false" name="sigma">1.0</parameter>' % P)
+        w('        </distr>')
+        w('      </distribution>')
+else:
+    w('      <distribution id="coalescent" spec="%s.evolution.tree.coalescent.Coalescent">' % P)
+    w('        <treeIntervals id="TreeIntervals" spec="%s.evolution.tree.TreeIntervals" tree="@Tree"/>' % P)
+    w('        <populationModel id="expGrowth" spec="%s.evolution.tree.coalescent.ExponentialGrowth" popSize="@popSize" growthRate="@growthRate"/>' % P)
+    w('      </distribution>')
+PRIORS = [
     ("clockRatePrior", "@clockRate",
      ['<distr spec="%s.inference.distribution.LogNormalDistributionModel" meanInRealSpace="false">' % P,
       '  <parameter spec="%s.inference.parameter.RealParameter" estimate="false" name="M">-5.3</parameter>' % P,
@@ -170,13 +230,17 @@ for pid, spec, body in [
      ['<distr spec="%s.inference.distribution.Dirichlet">' % P,
       '  <parameter spec="%s.inference.parameter.RealParameter" dimension="4" estimate="false" name="alpha">1.0 1.0 1.0 1.0</parameter>' % P,
       '</distr>']),
+]
+if not MASCOT:
+    PRIORS += [
     ("popSizePrior", "@popSize",
      ['<distr spec="%s.inference.distribution.Exponential">' % P,
       '  <parameter spec="%s.inference.parameter.RealParameter" estimate="false" name="mean">1.0E5</parameter>' % P,
       '</distr>']),
     ("growthRatePrior", "@growthRate",
      ['<distr spec="%s.inference.distribution.LaplaceDistribution" mu="0.0" scale="100.0"/>' % P]),
-]:
+]
+for pid, spec, body in PRIORS:
     w('      <distribution id="%s" spec="%s.inference.distribution.Prior" x="%s">' % (pid, P, spec))
     for b in body:
         w('        ' + b)
@@ -242,10 +306,14 @@ w('    </operator>')
 w('    <operator id="kappaScaler"      spec="%s.kernel.BactrianScaleOperator" parameter="@kappa" scaleFactor="0.5" weight="1.0"/>' % EV)
 w('    <operator id="gammaShapeScaler" spec="%s.kernel.BactrianScaleOperator" parameter="@gammaShape" scaleFactor="0.5" weight="1.0"/>' % EV)
 w('    <operator id="freqsExchange"    spec="%s.kernel.BactrianDeltaExchangeOperator" parameter="@freqs" delta="0.01" weight="1.0"/>' % IN)
-w('    <operator id="popSizeScaler"    spec="%s.kernel.BactrianScaleOperator" parameter="@popSize" scaleFactor="0.5" weight="3.0"/>' % EV)
-w('    <!-- Small window: the tree is only a few years deep, so a wide random walk on the -->')
-w('    <!-- growth rate is rejected almost always and floods the log with -Infinity.      -->')
-w('    <operator id="growthRateWalk"   spec="%s.kernel.BactrianRandomWalkOperator" parameter="@growthRate" scaleFactor="0.1" weight="3.0"/>' % IN)
+if MASCOT:
+    for nm in ['SkylineNe.outbreak','SkylineNe.ghost','SkylineMig.outbreak_to_ghost','SkylineMig.ghost_to_outbreak']:
+        w('    <operator id="%s.Walker" spec="%s.kernel.BactrianRandomWalkOperator" parameter="@%s" scaleFactor="0.5" weight="1.0"/>' % (nm, IN, nm))
+else:
+    w('    <operator id="popSizeScaler"    spec="%s.kernel.BactrianScaleOperator" parameter="@popSize" scaleFactor="0.5" weight="3.0"/>' % EV)
+    w('    <!-- Small window: the tree is only a few years deep, so a wide random walk on the -->')
+    w('    <!-- growth rate is rejected almost always and floods the log with -Infinity.      -->')
+    w('    <operator id="growthRateWalk"   spec="%s.kernel.BactrianRandomWalkOperator" parameter="@growthRate" scaleFactor="0.1" weight="3.0"/>' % IN)
 w('')
 TB = "targetedbeast.operators"
 if TARGETED:
@@ -290,9 +358,22 @@ else:
     w('')
 
 w('    <logger id="tracelog" spec="%s.inference.Logger" fileName="$(filebase).log" logEvery="2000">' % P)
-for r in ["posterior", "likelihood", "coalescent", "clockRate", "coefficient",
-          "ucldStdev", "kappa", "gammaShape", "freqs", "popSize", "growthRate"]:
+_tree_prior_logs = ["Mascot"] if MASCOT else ["coalescent", "popSize", "growthRate"]
+for r in ["posterior", "likelihood", "clockRate", "coefficient",
+          "ucldStdev", "kappa", "gammaShape", "freqs"] + _tree_prior_logs:
     w('      <log idref="%s"/>' % r)
+if MASCOT:
+    w('      <!-- Migration counts between the two demes, from a stochastic map declared')
+    w('           once here and reused by the events tree logger. -->')
+    w('      <log id="nrEventsLogger" spec="mascot.logger.MigrationCountLogger">')
+    w('        <mappedMascot id="mascotEventsTreelog" spec="mascot.distribution.MappedMascot"')
+    w('                      dynamics="@StructuredMigrationSkyline"')
+    w('                      structuredTreeIntervals="@StructuredTreeIntervals" tree="@Tree"/>')
+    w('      </log>')
+    w('      <!-- the realised interval boundaries in years: the grid is a fraction of the root -->')
+    w('      <log idref="rateShifts"/>')
+    for nm in ['SkylineNe.outbreak','SkylineNe.ghost','SkylineMig.outbreak_to_ghost','SkylineMig.ghost_to_outbreak']:
+        w('      <log idref="%s"/>' % nm)
 w('      <!-- the BEAST X convention for the same quantity: scale = sqrt(exp(sigma^2)-1).')
 w('           useCaching="false" is required: a calculator in a logger is never told its')
 w('           argument moved, and with caching on it logs its initial value forever. -->')
