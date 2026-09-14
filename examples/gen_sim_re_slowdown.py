@@ -49,13 +49,35 @@ MASCOT   = "--mascot" in sys.argv
 #       parameter dim = K+2      (of which K+1 are live)
 # ONE shift value does not work. It exits cleanly, logs nothing, and the tip types come
 # back NaN, so K must be at least 1 and the grid at least two values.
+# Two ways to set the grid.
+#
+#   --levels K      RELATIVE. Values are fractions of the CURRENT root height, because the
+#                   RateShifts element is given a tree. The grid always spans the tree, but
+#                   the boundaries move with the root, so an interval is not a fixed span.
+#
+#   --boundaries "2.5"   CALENDAR. Values are times before the most recent tip, in the tree's
+#                   own unit, and the RateShifts element is given NO tree. Fixed spans, at the
+#                   cost of a grid that no longer follows the tree if the root moves a lot.
+#
+# Either way K levels need K+1 shift values and dimension K+2. For calendar mode the extra
+# two values are appended past the last boundary: the deepest level is evaluated at the
+# midpoint between the last two, and anything deeper reuses it.
 MASCOT_LEVELS = 2
-if "--levels" in sys.argv:
-    MASCOT_LEVELS = int(sys.argv[sys.argv.index("--levels") + 1])
-assert MASCOT_LEVELS >= 1, "need at least one rate level"
-_frac = ["%.10g" % ((i + 1) / MASCOT_LEVELS) for i in range(MASCOT_LEVELS - 1)] + ["1", "1.5"]
-MASCOT_GRID = " ".join(_frac)            # K+1 values
-MASCOT_DIM  = MASCOT_LEVELS + 2          # K+2 entries, last one inert
+MASCOT_ABSOLUTE = False
+if "--boundaries" in sys.argv:
+    _b = [float(x) for x in sys.argv[sys.argv.index("--boundaries") + 1].split()]
+    assert _b and all(x > 0 for x in _b), "boundaries must be positive times"
+    MASCOT_ABSOLUTE = True
+    MASCOT_LEVELS = len(_b) + 1
+    _last = _b[-1]
+    MASCOT_GRID = " ".join("%.10g" % x for x in _b + [_last * 2.0, _last * 3.0])
+else:
+    if "--levels" in sys.argv:
+        MASCOT_LEVELS = int(sys.argv[sys.argv.index("--levels") + 1])
+    assert MASCOT_LEVELS >= 1, "need at least one rate level"
+    MASCOT_GRID = " ".join(["%.10g" % ((i + 1) / MASCOT_LEVELS)
+                            for i in range(MASCOT_LEVELS - 1)] + ["1", "1.5"])
+MASCOT_DIM = MASCOT_LEVELS + 2           # K+2 entries, last one inert
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM  = os.path.join(HERE, "..", "data")
@@ -187,7 +209,11 @@ if MASCOT:
     for m in ['outbreak_to_ghost','ghost_to_outbreak']:
         w('            <neDynamics id="MigDynamics.%s" spec="mascot.parameterdynamics.Skygrowth" logNe="@SkylineMig.%s" rateShifts="@rateShifts"/>' % (m,m))
     w('          </migrationDynamics>')
-    w('          <rateShifts id="rateShifts" spec="mascot.dynamics.RateShifts" tree="@Tree">%s</rateShifts>' % MASCOT_GRID)
+    w('          <!-- %s grid. %s -->' % (("CALENDAR" if MASCOT_ABSOLUTE else "tree-relative"),
+        ("Times before the most recent tip; no tree input, so they are absolute."
+         if MASCOT_ABSOLUTE else "Fractions of the current root height; boundaries move with the tree.")))
+    w('          <rateShifts id="rateShifts" spec="mascot.dynamics.RateShifts"%s>%s</rateShifts>'
+      % ("" if MASCOT_ABSOLUTE else ' tree="@Tree"', MASCOT_GRID))
     w('          <indicators id="indicators" spec="%s.inference.parameter.BooleanParameter" dimension="2" estimate="false">true</indicators>' % P)
     w('          <typeTrait id="typeTraitSet" spec="mascot.util.InitializedTraitSet" traitname="type"')
     w('                     value="%s">' % ",".join("%s=outbreak" % t for t in order))

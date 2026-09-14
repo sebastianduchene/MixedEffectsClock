@@ -121,8 +121,21 @@ configuration:
 | `... --targeted` | targetedbeast | exponential-growth coalescent |
 | `... --targeted --mascot` | targetedbeast | **Mascot**, two demes, one unsampled |
 
-`--levels K` sets how many rate levels the Mascot skyline has, i.e. one more than the number
-of change points; the default is 2, so the rate shifts once. **Do not set the grid by hand.**
+The Mascot skyline grid is set one of two ways, and never by hand:
+
+| Option | Grid | Boundaries |
+| --- | --- | --- |
+| `--levels K` | fractions of the current root height | move with the tree, so an interval is not a fixed span |
+| `--boundaries "2.5"` | times before the most recent tip | fixed calendar spans |
+
+What makes the difference is whether the `rateShifts` element is given a `tree`. With one, the
+values are read as fractions of the current root height; without one, as absolute times. An
+absolute grid that does not reach the root is how the lepromatosis skyline was silently
+collapsed to a constant, so the relative form is the safer default and the calendar form is
+the one to reach for when the intervals need to mean fixed periods.
+
+`--levels K` gives one more rate level than change points; the default is 2, so the rate
+shifts once. **Do not set the grid by hand.**
 The arithmetic is not what the XML suggests: `StructuredMigrationSkyline` caps its interval
 index two below the number of shift values, so N values give N-1 levels, and `Skygrowth`
 separately forces its parameter to dimension N+1 with the last entry never read by Mascot.
