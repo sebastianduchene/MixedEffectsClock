@@ -83,7 +83,7 @@ w('  The sequences were simulated under Jukes-Cantor, but HKY + gamma is fitted,
 w('  the BEAST X run. So kappa should sit near 1 and the gamma shape should be large.')
 w('-->')
 w('<beast namespace="%s.evolution.alignment:%s.evolution.tree:%s.inference"' % (P, P, P))
-w('       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1" version="2.7">')
+w('       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1:feast v10.6.1" version="2.7">')
 w('')
 w('  <data id="alignment" spec="%s.evolution.alignment.Alignment" name="alignment" dataType="nucleotide">' % P)
 for n, s in seqs:
@@ -235,6 +235,12 @@ w('    <logger id="tracelog" spec="%s.inference.Logger" fileName="$(filebase).lo
 for r in ["posterior", "likelihood", "coalescent", "clockRate", "coefficient",
           "ucldStdev", "kappa", "gammaShape", "freqs", "popSize", "growthRate"]:
     w('      <log idref="%s"/>' % r)
+w('      <!-- the BEAST X convention for the same quantity: scale = sqrt(exp(sigma^2)-1).')
+w('           useCaching="false" is required: a calculator in a logger is never told its')
+w('           argument moved, and with caching on it logs its initial value forever. -->')
+w('      <log id="branchRates.scale" spec="feast.expressions.ExpCalculator" useCaching="false" value="sqrt(exp(ucldStdev^2) - 1)">')
+w('        <arg idref="ucldStdev"/>')
+w('      </log>')
 w('      <log id="treeHeight" spec="%s.evolution.tree.TreeStatLogger" tree="@Tree"/>' % P)
 w('      <log id="rateStat" spec="%s.evolution.RateStatistic" branchratemodel="@clock" tree="@Tree"/>' % P)
 w('      <log id="designLog" spec="mixedeffectsclock.DesignLogger" validate="false" clock="@clock"/>')

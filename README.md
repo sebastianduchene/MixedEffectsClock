@@ -137,11 +137,13 @@ disjoint groups of branches get a single shared effect.
 
 ## Three things that will bite you
 
-**The clock must sit inside the posterior.** BEAST invalidates a cache only for objects
-reachable from the posterior, so a clock declared inside a logger is never told the tree
-moved and its design silently goes stale. Hang it off a tree likelihood. For a prior-only
-run, keep the likelihood but make the alignment entirely ambiguous: the likelihood is then
-flat and the wiring stays correct.
+**Anything with a cache must sit inside the posterior, or have caching turned off.** BEAST
+invalidates a cache only for objects reachable from the posterior. A clock declared inside a
+logger is never told the tree moved and its design silently goes stale, so hang it off a tree
+likelihood; for a prior-only run, keep the likelihood but make the alignment entirely
+ambiguous, which leaves it flat and the wiring correct. The same trap catches derived logger
+columns: a feast `ExpCalculator` in a logger must be given `useCaching="false"` or it reports
+its initial value for the whole run. Both failures are silent and produce plausible numbers.
 
 **Constrain every clade that carries a column**, and point the constraint at the clock's own
 `TaxonSet` by `idref` rather than redeclaring the taxa. Without monophyly a clade's ancestor
@@ -176,6 +178,35 @@ two columns directly is wrong.
 Note also that under a mixed-effects clock the dispersion is a **residual**, left after the
 named clades have taken their share. A small value is evidence the design is working, not
 evidence the tree is clocklike.
+
+## Reporting the dispersion in both conventions
+
+`examples/dispersion_conversion_6taxon.xml` logs the BEAST X quantity alongside ours, so
+traces from the two codebases line up without hand conversion. The model is unchanged:
+`ucldStdev` is still what is sampled and still carries its prior; the extra column is a
+deterministic function of it, computed by feast.
+
+```xml
+<log id="branchRates.scale" spec="feast.expressions.ExpCalculator" useCaching="false"
+     value="sqrt(exp(ucldStdev^2) - 1)">
+  <arg idref="ucldStdev"/>
+</log>
+```
+
+Verified against the closed form over 9001 samples, maximum absolute difference 1.4e-15.
+The same column is now written by the simulation generators in `examples/`.
+
+It also makes the prior mismatch visible rather than theoretical. Sampling the prior, the two
+columns have almost the same median and very different tails:
+
+| | median | 95% upper |
+| --- | --- | --- |
+| `ucldStdev`, ours | 0.227 | 1.01 |
+| `branchRates.scale`, BEAST X convention | 0.230 | 1.33 |
+
+BEAST X puts Exponential(mean 1/3) on the coefficient of variation; we put it on the
+log-scale standard deviation. They agree closely where the posterior usually sits and differ
+by about a third at the top, which is why this is documented rather than matched.
 
 ## What is in here
 

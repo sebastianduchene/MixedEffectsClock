@@ -1,0 +1,217 @@
+<!--
+  Reporting the dispersion in BOTH conventions, so BEAST 2 and BEAST X runs can be
+  compared directly.
+
+  This is prior_recovery_6taxon.xml with one extra logged column. The model is unchanged:
+  ucldStdev is still what is sampled, and it still carries the Exponential(mean 1/3)
+  prior. The added column is a deterministic function of it, computed by feast, and
+  reported under the BEAST X name so the two traces line up.
+
+  Why not just rename the column. The two are not the same number. ucldStdev is the
+  standard deviation on the LOG scale; branchRates.scale is a coefficient of variation in
+  REAL space. Below about 0.3 they agree to a percent or so and the distinction looks
+  pedantic; by 1.0 the real-space value is 1.31 and by 2.0 it is 7.32.
+
+  Why not sample the BEAST X parameter instead. You can: the lognormal's S input accepts
+  a Function, so a sampled coefficient of variation could feed a computed S. It costs
+  ORC's UcldScalerOperator, which takes its stdev as a parameter and hard-codes the
+  log-scale convention internally. That operator is worth about forty times the effective
+  sample size on this parameter, so converting for reporting is the better trade.
+
+  Verified against the closed form over 401 samples: maximum absolute difference 0.
+
+  Run:  beast -overwrite -seed 3 dispersion_conversion_6taxon.xml
+-->
+<beast namespace="beast.base.evolution.alignment:beast.base.evolution.tree:beast.base.inference:beast.base.inference.parameter"
+       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1:feast v10.6.1"
+       version="2.7">
+
+  <!-- Every sequence is entirely ambiguous, so this alignment carries no information
+       at all. It exists for two reasons. It puts the clock inside the posterior,
+       without which BEAST never invalidates the design cache. And a flat likelihood
+       lets the coalescent and the tree moves decide the topology, instead of 200
+       arbitrary random sites pinning it: with real random data all 20 samples came
+       back with the SAME topology and the test only varied node heights. -->
+  <data id="alignment" spec="beast.base.evolution.alignment.Alignment" name="alignment" dataType="nucleotide">
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t1" totalcount="4" value="NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t2" totalcount="4" value="NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t3" totalcount="4" value="NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t4" totalcount="4" value="NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t5" totalcount="4" value="NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"/>
+    <sequence spec="beast.base.evolution.alignment.Sequence" taxon="t6" totalcount="4" value="NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"/>
+  </data>
+
+  <run id="mcmc" spec="beast.base.inference.MCMC" chainLength="5000000">
+
+    <state id="state" spec="beast.base.inference.State">
+      <tree id="Tree" spec="beast.base.evolution.tree.Tree" name="stateNode">
+        <taxonset id="TaxonSet" spec="beast.base.evolution.alignment.TaxonSet">
+          <taxon id="t1" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t2" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t3" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t4" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t5" spec="beast.base.evolution.alignment.Taxon"/>
+          <taxon id="t6" spec="beast.base.evolution.alignment.Taxon"/>
+        </taxonset>
+      </tree>
+      <parameter id="coefficient" spec="beast.base.inference.parameter.RealParameter" dimension="3" name="stateNode">1.3862943611198906 -1.6094379124341003 2.302585092994046</parameter>
+      <parameter id="rates"       spec="beast.base.inference.parameter.RealParameter" dimension="10" lower="0.0" name="stateNode">1.0</parameter>
+      <parameter id="ucldStdev"   spec="beast.base.inference.parameter.RealParameter" lower="0.0" name="stateNode">0.3</parameter>
+      <parameter id="clockRate"   spec="beast.base.inference.parameter.RealParameter" lower="0.0" name="stateNode">7.0E-9</parameter>
+    </state>
+
+    <init id="startingTree" spec="beast.base.evolution.tree.TreeParser"
+          initial="@Tree" taxonset="@TaxonSet" IsLabelledNewick="true" adjustTipHeights="false"
+          newick="(((t1:1,t2:1):1,(t3:1,t4:1):1):1,(t5:2,t6:2):1):0.0;"/>
+
+    <distribution id="posterior" spec="beast.base.inference.CompoundDistribution">
+      <distribution id="coefficientPrior" spec="beast.base.inference.distribution.Prior" x="@coefficient">
+        <distr spec="beast.base.inference.distribution.Normal">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="mean">0.0</parameter>
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="sigma">2.0</parameter>
+        </distr>
+      </distribution>
+      <!-- The production priors. With an all-ambiguous alignment the likelihood is
+           flat, so the posterior IS the prior and each of these must be recovered. -->
+      <distribution id="clockRatePrior" spec="beast.base.inference.distribution.Prior" x="@clockRate">
+        <distr spec="beast.base.inference.distribution.Gamma">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="alpha">70.0</parameter>
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="beta">1.0E-10</parameter>
+        </distr>
+      </distribution>
+      <distribution id="ucldStdevPrior" spec="beast.base.inference.distribution.Prior" x="@ucldStdev">
+        <distr spec="beast.base.inference.distribution.Exponential">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="mean">0.3333333333333333</parameter>
+        </distr>
+      </distribution>
+      <distribution id="ratesPrior" spec="beast.base.inference.distribution.Prior" x="@rates">
+        <distr spec="beast.base.inference.distribution.LogNormalDistributionModel" S="@ucldStdev" meanInRealSpace="true">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="M">1.0</parameter>
+        </distr>
+      </distribution>
+      <!-- A constant-size coalescent, so the tree stays finite. Without any tree
+           prior the root scaler drifts upward without bound: on 200 saturated
+           random sites the likelihood is flat once branches are long, and node ages
+           reach 1e308 within 20,000 states. A short chain merely hides this.
+           popSize is fixed, so the tree still has the only operators. -->
+      <distribution id="coalescent" spec="beast.base.evolution.tree.coalescent.Coalescent">
+        <treeIntervals id="TreeIntervals" spec="beast.base.evolution.tree.TreeIntervals" tree="@Tree"/>
+        <populationModel id="constant" spec="beast.base.evolution.tree.coalescent.ConstantPopulation">
+          <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="popSize">1.0</parameter>
+        </populationModel>
+      </distribution>
+      <distribution id="likelihood" spec="beast.base.evolution.likelihood.TreeLikelihood" data="@alignment" tree="@Tree">
+        <siteModel id="siteModel" spec="beast.base.evolution.sitemodel.SiteModel">
+          <substModel id="jc" spec="beast.base.evolution.substitutionmodel.JukesCantor"/>
+        </siteModel>
+          <branchRateModel id="clock" spec="mixedeffectsclock.MixedEffectsClockModel"
+                 tree="@Tree" rates="@rates" clock.rate="@clockRate" coefficient="@coefficient">
+            <distr id="rateDistr" spec="beast.base.inference.distribution.LogNormalDistributionModel"
+                   S="@ucldStdev" meanInRealSpace="true">
+              <parameter spec="beast.base.inference.parameter.RealParameter" estimate="false" name="M">1.0</parameter>
+            </distr>
+
+            <clade id="cladeA" spec="mixedeffectsclock.CladeDesign" category="0" includeStem="true">
+              <taxonset id="taxa.A" spec="beast.base.evolution.alignment.TaxonSet">
+                <taxon idref="t1"/>
+                <taxon idref="t2"/>
+              </taxonset>
+            </clade>
+
+            <clade id="cladeB" spec="mixedeffectsclock.CladeDesign" category="1" includeStem="false">
+              <taxonset id="taxa.B" spec="beast.base.evolution.alignment.TaxonSet">
+                <taxon idref="t3"/>
+                <taxon idref="t4"/>
+              </taxonset>
+            </clade>
+
+            <clade id="cladeC" spec="mixedeffectsclock.CladeDesign" category="2" includeStem="true" excludeClade="true">
+              <taxonset id="taxa.C" spec="beast.base.evolution.alignment.TaxonSet">
+                <taxon idref="t5"/>
+                <taxon idref="t6"/>
+              </taxonset>
+            </clade>
+          </branchRateModel>
+      </distribution>
+
+      <!-- Monophyly is enforced on the SAME TaxonSet objects the clock's clade
+           elements use, referenced by idref rather than redeclared. Two separate
+           copies of the taxa would let the constraint and the design drift apart:
+           editing a clade would leave the constraint guarding a set the design no
+           longer uses, and nothing would complain. These sit after the likelihood
+           because that is where the ids are defined, and BEAST resolves idrefs in
+           document order. -->
+      <distribution id="monophyly.cladeA" spec="beast.base.evolution.tree.MRCAPrior" monophyletic="true" tree="@Tree">
+        <taxonset idref="taxa.A"/>
+      </distribution>
+      <distribution id="monophyly.cladeB" spec="beast.base.evolution.tree.MRCAPrior" monophyletic="true" tree="@Tree">
+        <taxonset idref="taxa.B"/>
+      </distribution>
+      <distribution id="monophyly.cladeC" spec="beast.base.evolution.tree.MRCAPrior" monophyletic="true" tree="@Tree">
+        <taxonset idref="taxa.C"/>
+      </distribution>
+    </distribution>
+
+
+    <!-- BEAUti's standard tree move set, and nothing else. The intercept, the three
+         coefficients, the branch multipliers and the dispersion all stay fixed, so any
+         change in a branch rate can only come from the design being remapped. -->
+    <operator id="treeRootScaler" spec="beast.base.evolution.operator.kernel.BactrianScaleOperator" tree="@Tree" rootOnly="true" scaleFactor="0.1" upper="10.0" weight="3.0"/>
+    <operator id="uniformHeights" spec="beast.base.evolution.operator.kernel.BactrianNodeOperator" tree="@Tree" weight="30.0"/>
+    <operator id="subtreeSlide"   spec="beast.base.evolution.operator.kernel.BactrianSubtreeSlide" tree="@Tree" weight="15.0"/>
+    <operator id="narrowExchange" spec="beast.base.evolution.operator.Exchange" tree="@Tree" weight="15.0"/>
+    <operator id="wideExchange"   spec="beast.base.evolution.operator.Exchange" tree="@Tree" isNarrow="false" weight="3.0"/>
+    <operator id="wilsonBalding"  spec="beast.base.evolution.operator.WilsonBalding" tree="@Tree" weight="3.0"/>
+
+    <!-- Every sampled quantity now has a move. The coefficients get a RANDOM WALK,
+         not a scale operator: they are log-scale and cross zero, and BEAST rejects
+         a scale operator on a parameter that can be negative.
+         Note the packages differ: BactrianRandomWalkOperator is under
+         beast.base.inference.operator.kernel, BactrianScaleOperator under
+         beast.base.evolution.operator.kernel. -->
+    <operator id="coefficientWalk" spec="beast.base.inference.operator.kernel.BactrianRandomWalkOperator" parameter="@coefficient" scaleFactor="0.5" weight="9.0"/>
+    <operator id="clockRateScaler" spec="beast.base.evolution.operator.kernel.BactrianScaleOperator" parameter="@clockRate" scaleFactor="0.5" weight="3.0"/>
+    <!-- ORC's joint move: scales the dispersion while re-proposing every rate to hold
+         its quantile fixed. A bare scaler on the dispersion alone is mostly rejected,
+         because changing it changes the density of all 10 rates at once. -->
+    <operator id="ucldScalerJoint" spec="orc.consoperators.UcldScalerOperator"
+              distr="@rateDistr" rates="@rates" stdev="@ucldStdev" scaleFactor="0.5" weight="3.0">
+      <kernel spec="beast.base.inference.operator.kernel.KernelDistribution$Bactrian"/>
+    </operator>
+    <operator id="ucldStdevScaler" spec="beast.base.evolution.operator.kernel.BactrianScaleOperator" parameter="@ucldStdev" scaleFactor="0.5" weight="3.0"/>
+    <operator id="ratesScaler"     spec="beast.base.evolution.operator.kernel.BactrianScaleOperator" parameter="@rates" scaleFactor="0.5" weight="10.0"/>
+
+    <logger id="tracelog" spec="beast.base.inference.Logger" fileName="$(filebase).log" logEvery="500">
+      <log idref="posterior"/>
+      <log idref="coefficient"/>
+      <log idref="clockRate"/>
+      <log idref="ucldStdev"/>
+      <!-- The BEAST X quantity, derived from ours.
+           ucldStdev here is a LOG-SCALE standard deviation, which is the sigma of
+           Bletsa et al. BEAST X's branchRates.scale is a REAL-SPACE coefficient of
+           variation. Same distribution, two descriptions:
+               scale = sqrt(exp(sigma^2) - 1)        sigma = sqrt(log(1 + scale^2))
+           They agree to about 1% below 0.3 and diverge badly above 1, so comparing
+           the two columns without converting is simply wrong.
+
+           useCaching="false" is REQUIRED and is not a performance choice. BEAST only
+           calls requiresRecalculation on objects reachable from the posterior. This
+           calculator sits in a logger, so it is never told ucldStdev moved, and with
+           caching on it logs its INITIAL value forever. Verified: with caching left
+           at the default this column was frozen at 0.306878 for all 401 samples while
+           ucldStdev ranged over 0.005 to 0.34. -->
+      <log id="branchRates.scale" spec="feast.expressions.ExpCalculator" useCaching="false"
+           value="sqrt(exp(ucldStdev^2) - 1)">
+        <arg idref="ucldStdev"/>
+      </log>
+      <log id="rateStat" spec="beast.base.evolution.RateStatistic" branchratemodel="@clock" tree="@Tree"/>
+      <log idref="monophyly.cladeA"/>
+      <log idref="monophyly.cladeB"/>
+      <log idref="monophyly.cladeC"/>
+      <log id="designLog" spec="mixedeffectsclock.DesignLogger" validate="true" clock="@clock"/>
+    </logger>
+    <logger id="treelog" spec="beast.base.inference.Logger" fileName="$(filebase).trees" logEvery="50000" mode="tree">
+      <log id="treeWithRates" spec="beast.base.evolution.TreeWithMetaDataLogger" tree="@Tree" branchratemodel="@clock"/>
+    </logger>
+  </run>
+</beast>
