@@ -38,6 +38,25 @@ TARGETED = "--targeted" in sys.argv
 # this is the full stack: mixed-effects clock, targeted tree moves, ORC, and Mascot.
 MASCOT   = "--mascot" in sys.argv
 
+# How many distinct rate LEVELS the Mascot skyline should have, i.e. one more than the
+# number of change points. --levels 2 means the rate shifts once.
+#
+# The arithmetic is not what the XML suggests, so it is derived here rather than typed.
+# StructuredMigrationSkyline caps its interval index two below the number of shift values,
+# so N shift values give N-1 levels; and Skygrowth forces its parameter to dimension N+1,
+# with the last entry never read by Mascot. For K levels:
+#       shift values  = K+1      (K-1 interior boundaries, then the root, then past it)
+#       parameter dim = K+2      (of which K+1 are live)
+# ONE shift value does not work. It exits cleanly, logs nothing, and the tip types come
+# back NaN, so K must be at least 1 and the grid at least two values.
+MASCOT_LEVELS = 2
+if "--levels" in sys.argv:
+    MASCOT_LEVELS = int(sys.argv[sys.argv.index("--levels") + 1])
+assert MASCOT_LEVELS >= 1, "need at least one rate level"
+_frac = ["%.10g" % ((i + 1) / MASCOT_LEVELS) for i in range(MASCOT_LEVELS - 1)] + ["1", "1.5"]
+MASCOT_GRID = " ".join(_frac)            # K+1 values
+MASCOT_DIM  = MASCOT_LEVELS + 2          # K+2 entries, last one inert
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM  = os.path.join(HERE, "..", "data")
 
@@ -127,12 +146,12 @@ if MASCOT:
     # Ne and migration are scaled to THIS tree, not copied from lepromatosis. That tree is
     # thousands of years deep with logNe near 7; this one is ~5.5 years, so logNe near 0
     # (Ne of order 1) and migration near log(0.1) are the sensible starting points.
-    w('      <!-- Mascot skyline: 4 shift values give 3 rate levels, and Skygrowth forces')
-    w('           dimension 5 with the last entry never read. See MEMORY: N shifts -> N-1 levels. -->')
+    w('      <!-- Mascot skyline: %d rate level(s), from %d shift values, parameter' % (MASCOT_LEVELS, MASCOT_LEVELS + 1))
+    w('           dimension %d of which the last entry is never read by Mascot. -->' % MASCOT_DIM)
     for d in ['outbreak','ghost']:
-        w('      <parameter id="SkylineNe.%s" spec="%s.inference.parameter.RealParameter" dimension="5" name="stateNode">0.0</parameter>' % (d, P))
+        w('      <parameter id="SkylineNe.%s" spec="%s.inference.parameter.RealParameter" dimension="%d" name="stateNode">0.0</parameter>' % (d, P, MASCOT_DIM))
     for m in ['outbreak_to_ghost','ghost_to_outbreak']:
-        w('      <parameter id="SkylineMig.%s" spec="%s.inference.parameter.RealParameter" dimension="5" name="stateNode">-2.302585</parameter>' % (m, P))
+        w('      <parameter id="SkylineMig.%s" spec="%s.inference.parameter.RealParameter" dimension="%d" name="stateNode">-2.302585</parameter>' % (m, P, MASCOT_DIM))
 else:
     w('      <parameter id="popSize"     spec="%s.inference.parameter.RealParameter" lower="0.0" name="stateNode">1.0</parameter>' % P)
     w('      <parameter id="growthRate"  spec="%s.inference.parameter.RealParameter" name="stateNode">0.0</parameter>' % P)
@@ -168,7 +187,7 @@ if MASCOT:
     for m in ['outbreak_to_ghost','ghost_to_outbreak']:
         w('            <neDynamics id="MigDynamics.%s" spec="mascot.parameterdynamics.Skygrowth" logNe="@SkylineMig.%s" rateShifts="@rateShifts"/>' % (m,m))
     w('          </migrationDynamics>')
-    w('          <rateShifts id="rateShifts" spec="mascot.dynamics.RateShifts" tree="@Tree">0.3333333333 0.6666666667 1 1.5</rateShifts>')
+    w('          <rateShifts id="rateShifts" spec="mascot.dynamics.RateShifts" tree="@Tree">%s</rateShifts>' % MASCOT_GRID)
     w('          <indicators id="indicators" spec="%s.inference.parameter.BooleanParameter" dimension="2" estimate="false">true</indicators>' % P)
     w('          <typeTrait id="typeTraitSet" spec="mascot.util.InitializedTraitSet" traitname="type"')
     w('                     value="%s">' % ",".join("%s=outbreak" % t for t in order))

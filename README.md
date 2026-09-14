@@ -121,6 +121,17 @@ configuration:
 | `... --targeted` | targetedbeast | exponential-growth coalescent |
 | `... --targeted --mascot` | targetedbeast | **Mascot**, two demes, one unsampled |
 
+`--levels K` sets how many rate levels the Mascot skyline has, i.e. one more than the number
+of change points; the default is 2, so the rate shifts once. **Do not set the grid by hand.**
+The arithmetic is not what the XML suggests: `StructuredMigrationSkyline` caps its interval
+index two below the number of shift values, so N values give N-1 levels, and `Skygrowth`
+separately forces its parameter to dimension N+1 with the last entry never read by Mascot.
+For K levels that is K+1 shift values and dimension K+2, of which K+1 are live. Verified by
+perturbing each entry and watching the Mascot density.
+
+A single shift value does not work and fails silently: the run exits 0, logs nothing, and
+never produces a sample. The minimum is two values, which is one level.
+
 The last is the configuration the package exists for: the mixed-effects clock, the targeted
 tree proposals, ORC's rate moves and a structured coalescent with a ghost deme, all at once.
 Note that the simulated data were not generated under population structure, so Mascot is
