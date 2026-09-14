@@ -30,6 +30,10 @@ is 0, so it does not matter here, but the two columns are not the same quantity.
 """
 import re, sys, os
 
+# --targeted swaps BEAUti's tree moves for the targetedbeast set the lepromatosis
+# BEAST 2 builds use, and adds the edge weights they need.
+TARGETED = "--targeted" in sys.argv
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM  = os.path.join(HERE, "..", "data")
 
@@ -92,7 +96,7 @@ w('  The sequences were simulated under Jukes-Cantor, but HKY + gamma is fitted,
 w('  the BEAST X run. So kappa should sit near 1 and the gamma shape should be large.')
 w('-->')
 w('<beast namespace="%s.evolution.alignment:%s.evolution.tree:%s.inference"' % (P, P, P))
-w('       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1:feast v10.6.1" version="2.7">')
+w('       required="BEAST.base v2.7.7:MixedEffectsClock v0.0.1:ORC v1.2.1:feast v10.6.1%s" version="2.7">' % (":TargetedBeast v2.0.0" if TARGETED else ""))
 w('')
 w('  <data id="alignment" spec="%s.evolution.alignment.Alignment" name="alignment" dataType="nucleotide">' % P)
 for n, s in seqs:
@@ -178,6 +182,14 @@ for pid, spec, body in [
         w('        ' + b)
     w('      </distribution>')
 w('')
+if TARGETED:
+    w('      <!-- Edge weights for the targeted moves. Inside the posterior on purpose: they')
+    w('           are a function of the tree, and BEAST invalidates a cache only for objects')
+    w('           reachable from the posterior. ParsimonyWeights, not ParsimonyWeights2: the')
+    w('           latter throws ArrayIndexOutOfBoundsException on the lepromatosis data. -->')
+    w('      <distribution id="consensusWeights" spec="targetedbeast.edgeweights.ParsimonyWeights" tree="@Tree" maxWeight="20">')
+    w('        <data spec="targetedbeast.alignment.ConsensusAlignment" data="@alignment"/>')
+    w('      </distribution>')
 w('      <distribution id="likelihood" spec="%s.evolution.likelihood.TreeLikelihood" data="@alignment" tree="@Tree">' % P)
 w('        <siteModel id="siteModel" spec="%s.evolution.sitemodel.SiteModel" gammaCategoryCount="4" shape="@gammaShape">' % P)
 w('          <substModel id="hky" spec="%s.evolution.substitutionmodel.HKY" kappa="@kappa">' % P)
@@ -235,19 +247,48 @@ w('    <!-- Small window: the tree is only a few years deep, so a wide random wa
 w('    <!-- growth rate is rejected almost always and floods the log with -Infinity.      -->')
 w('    <operator id="growthRateWalk"   spec="%s.kernel.BactrianRandomWalkOperator" parameter="@growthRate" scaleFactor="0.1" weight="3.0"/>' % IN)
 w('')
-w('    <!-- BEAUti\'s standard tree move set -->')
-w('    <operator id="treeScaler"     spec="%s.kernel.BactrianScaleOperator" tree="@Tree" scaleFactor="0.5" upper="10.0" weight="3.0"/>' % EV)
-w('    <operator id="treeRootScaler" spec="%s.kernel.BactrianScaleOperator" tree="@Tree" rootOnly="true" scaleFactor="0.5" upper="10.0" weight="3.0"/>' % EV)
-w('    <operator id="uniformHeights" spec="%s.kernel.BactrianNodeOperator" tree="@Tree" weight="30.0"/>' % EV)
-w('    <operator id="subtreeSlide"   spec="%s.kernel.BactrianSubtreeSlide" tree="@Tree" weight="15.0"/>' % EV)
-w('    <operator id="narrowExchange" spec="%s.Exchange" tree="@Tree" weight="15.0"/>' % EV)
-w('    <operator id="wideExchange"   spec="%s.Exchange" tree="@Tree" isNarrow="false" weight="3.0"/>' % EV)
-w('    <operator id="wilsonBalding"  spec="%s.WilsonBalding" tree="@Tree" weight="3.0"/>' % EV)
-w('    <operator id="upDownRates"    spec="%s.kernel.BactrianUpDownOperator" scaleFactor="0.75" weight="3.0">' % IN)
-w('      <up idref="clockRate"/>')
-w('      <down idref="Tree"/>')
-w('    </operator>')
-w('')
+TB = "targetedbeast.operators"
+if TARGETED:
+    w('    <!-- targetedbeast tree moves, the set the lepromatosis BEAST 2 builds use. -->')
+    w('    <!-- They act on the RAW rates and node heights, exactly as ORC does, so the')
+    w('         clade factor is a per-branch constant the moves never touch. -->')
+    w('    <operator id="WeightBasedNodeRandomizer" spec="%s.WeightBasedNodeRandomizer" percentage="0.01" optimise="true" tree="@Tree" weight="0.5" edgeWeights="@consensusWeights"/>' % TB)
+    w('    <operator id="HeightBasedNodeRandomizer" spec="%s.HeightBasedNodeRandomizer" percentage="0.01" optimise="true" tree="@Tree" weight="0.5"/>' % TB)
+    w('    <operator id="RangeByLength" spec="%s.RangeSlide" tree="@Tree" weight="10.0" size="0.1" edgeWeights="@consensusWeights" weightByBranchLength="true"/>' % TB)
+    w('    <operator id="Range" spec="%s.RangeSlide" tree="@Tree" weight="30.0" size="0.1" edgeWeights="@consensusWeights" sqrtWeights="true"/>' % TB)
+    w('    <operator id="RangeUniform" spec="%s.RangeSlide" tree="@Tree" weight="10.0" size="0.1" edgeWeights="@consensusWeights" uniform="true"/>' % TB)
+    w('    <operator id="UnTargetedWide" spec="%s.WeightedWideOperator" tree="@Tree" weight="5.0"/>' % TB)
+    w('    <operator id="TargetedWide" spec="%s.WeightedWideOperator" tree="@Tree" weight="15.0" edgeWeights="@consensusWeights"/>' % TB)
+    w('    <operator id="TargetedWilsonBalding" spec="%s.TargetedWilsonBaldingRates" rates="@rates" tree="@Tree" weight="5" edgeWeights="@consensusWeights"/>' % TB)
+    w('    <operator id="TargetedWilsonBalding2" spec="%s.TargetedWilsonBaldingRates" rates="@rates" tree="@Tree" weight="1" edgeWeights="@consensusWeights" useEdgeLength="true"/>' % TB)
+    w('    <operator id="ScaleAll" spec="%s.IntervalScaleOperator" tree="@Tree" weight="0.5" scaleFactor="0.9">' % TB)
+    w('      <down idref="clockRate"/>')
+    w('    </operator>')
+    w('    <operator id="ScaleIntervalsRandomly" spec="%s.IntervalScaleOperator" tree="@Tree" weight="0.5" scaleFactor="0.1" scaleAllNodesIndependently="true"/>' % TB)
+    w('    <operator id="ScaleIntervalsWithRates" spec="%s.IntervalRateCoScaler" scaleFactor="0.25" weight="3.0">' % TB)
+    w('      <branchRates idref="rates"/>')
+    w('      <tree idref="Tree"/>')
+    w('    </operator>')
+    w('    <operator id="ScaleIntervalsWithRatesAndStdev" spec="%s.IntervalRateCoScaler" scaleFactor="0.25" weight="3.0">' % TB)
+    w('      <branchRates idref="rates"/>')
+    w('      <stdev idref="ucldStdev"/>')
+    w('      <tree idref="Tree"/>')
+    w('    </operator>')
+else:
+    w('    <!-- BEAUti\'s standard tree move set -->')
+    w('    <operator id="treeScaler"     spec="%s.kernel.BactrianScaleOperator" tree="@Tree" scaleFactor="0.5" upper="10.0" weight="3.0"/>' % EV)
+    w('    <operator id="treeRootScaler" spec="%s.kernel.BactrianScaleOperator" tree="@Tree" rootOnly="true" scaleFactor="0.5" upper="10.0" weight="3.0"/>' % EV)
+    w('    <operator id="uniformHeights" spec="%s.kernel.BactrianNodeOperator" tree="@Tree" weight="30.0"/>' % EV)
+    w('    <operator id="subtreeSlide"   spec="%s.kernel.BactrianSubtreeSlide" tree="@Tree" weight="15.0"/>' % EV)
+    w('    <operator id="narrowExchange" spec="%s.Exchange" tree="@Tree" weight="15.0"/>' % EV)
+    w('    <operator id="wideExchange"   spec="%s.Exchange" tree="@Tree" isNarrow="false" weight="3.0"/>' % EV)
+    w('    <operator id="wilsonBalding"  spec="%s.WilsonBalding" tree="@Tree" weight="3.0"/>' % EV)
+    w('    <operator id="upDownRates"    spec="%s.kernel.BactrianUpDownOperator" scaleFactor="0.75" weight="3.0">' % IN)
+    w('      <up idref="clockRate"/>')
+    w('      <down idref="Tree"/>')
+    w('    </operator>')
+    w('')
+
 w('    <logger id="tracelog" spec="%s.inference.Logger" fileName="$(filebase).log" logEvery="2000">' % P)
 for r in ["posterior", "likelihood", "coalescent", "clockRate", "coefficient",
           "ucldStdev", "kappa", "gammaShape", "freqs", "popSize", "growthRate"]:
