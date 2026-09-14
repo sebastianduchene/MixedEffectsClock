@@ -154,7 +154,8 @@ Validated at the XML level against known truth. There are **no unit tests**; `te
 empty. That is a deliberate trade, not an oversight: the failure modes that actually
 occurred here were wiring and caching problems that unit tests on a six-taxon tree would not
 have caught, and every one was found by an end-to-end check with an independent
-recomputation.
+recomputation. They are still worth writing as regression protection; see
+[Tests to write](#tests-to-write).
 
 | Check | Result |
 | --- | --- |
@@ -173,6 +174,49 @@ effect, estimating the tree and the rate together gave a background rate 21% hig
 recovers the tree and dispersion. So neither half is wrong: this is joint identifiability of
 rate against time, a general property of relaxed clocks. It is one replicate, and a
 ten-replicate coverage study is the outstanding piece of work.
+
+## Tests to write
+
+No Java bug has been found in this package so far: it compiled first time and has been
+correct at every check. So these are **regression protection for a package that is about to
+change**, not a hunt for something currently broken. Their value is that they fail loudly
+when the Mascot integration lands.
+
+JUnit is the conventional choice for a BEAST 2 package and is what a reviewer will expect,
+but it is not currently a dependency here and would have to be added. Test fixtures are
+cheap either way: a tree comes from a newick string through `TreeParser` in three lines.
+
+**Worth writing properly.**
+
+- [ ] **Design matrix on a hand-checked tree.** Build a small tree in code, define columns
+      exercising `includeStem`, `excludeClade`, two elements sharing a category, and a clade
+      that is not monophyletic. Assert the exact **set of branches** in each column, not the
+      counts. Counts are the obvious thing to assert and they are too weak: a design attached
+      to the wrong branches has identical counts. This is the only place in the package where
+      a silent wrong answer can originate.
+- [ ] **Cache invalidation under a topology change.** Build the design, mutate the tree,
+      assert it was recomputed. This guards an override that exists only because the parent
+      class has its own tree-dirty check commented out in the BEAST source. If someone later
+      tidies that method because it looks redundant, this is the only thing that would catch
+      it, and the resulting bug would be invisible in every output.
+
+**Cheap, add in the same sitting.**
+
+- [ ] **Store and restore.** Propose, reject, assert the design reverts to the previous one.
+- [ ] **Rate arithmetic.** Exact equality against hand-computed values, including a negative
+      coefficient and a branch in two columns, where the coefficients sum.
+- [ ] **Input validation** that already exists: `normalize="true"` rejected, coefficient
+      dimension mismatched against the design, `excludeClade` without `includeStem`.
+
+**If a third tier is wanted.**
+
+- [ ] **A golden test on the 50-taxon tree in `data/`**, asserting the full design. Realistic
+      size rather than a toy, so it would catch a change in semantics that a six-taxon
+      fixture might not reach.
+
+**Deliberately out of scope.** Anything needing an MCMC, the operators, or the priors. Those
+are ORC's code or BEAST's, and the end-to-end checks in `validation/` cover them better than
+a unit test could.
 
 ## Not done
 
