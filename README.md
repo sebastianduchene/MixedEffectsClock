@@ -86,34 +86,81 @@ what subclassing buys. No priors, no distribution: the mean-one lognormal is the
 gradients or Hamiltonian sampling, because BEAST 2 has none and the benchmark says little is
 lost. `JAVA_CLASSES.md` covers all three classes method by method.
 
-## Building
+## Installation
 
-BEAST 2.7 class files are Java 17, so a JDK 17 or newer is required; a Java 11 compiler
-fails with `class file has wrong version 61.0`. The build finds a suitable JDK by itself if
-one is in a usual place, and takes `-Djdk.home=/path/to/jdk` otherwise.
+**Prerequisites.**
+
+| | | |
+| --- | --- | --- |
+| BEAST | 2.7.7 or newer | |
+| A JDK | 17 or newer, to build | a Java 11 compiler fails with `class file has wrong version 61.0` |
+| Apache Ant | any recent | |
+| Python 3 | for the generators and checkers | `dendropy` only for `check_rates.py` |
+| R | for the tree figures only | `ape` |
+
+**BEAST packages.** Install these through BEAUti's package manager, or `packagemanager -add`:
+
+| Package | Needed for |
+| --- | --- |
+| ORC | the dispersion operator, which is not optional; see below |
+| feast | the dispersion conversion column |
+| Mascot | the structured coalescent, only with `--mascot` |
+| TargetedBeast | the targeted tree moves, only with `--targeted` |
+| BEASTLabs | a metric used by ORC's exchange operators |
+
+**Build and install this package.**
 
     ant install
 
-That compiles with `--release 17`, jars the package, and unpacks it into
-`~/.beast/2.7/MixedEffectsClock`, where BEAST finds it beside Mascot, ORC and TargetedBeast.
-Other targets: `build` (jar only), `addon` (installable zip), `clean`.
+That compiles with `--release 17`, jars the package and unpacks it into
+`~/.beast/2.7/MixedEffectsClock`, where BEAST finds it beside the others. The build looks for
+a JDK in the usual places; give it `-Djdk.home=/path/to/jdk` if it cannot find one. Other
+targets: `build` for the jar alone, `addon` for an installable zip, `clean`.
 
-Requires BEAST 2.7.7 or newer, and ORC for the dispersion operator described below.
+Check it loaded by running any example: BEAST prints its package list at startup and
+`MixedEffectsClock` should appear there.
 
-## Quick start
+## Running an analysis
 
-Every example runs from this repository alone, with no external data:
+Everything runs from this repository alone, with no external data.
 
     cd examples
-    python3 gen_sim_re_slowdown.py > sim.xml      # 50 taxa, known truth
+
+    # 1. write an XML. This one is 50 taxa with known truth: a background rate of
+    #    0.005, one clade at twice that, one at 0.3 times, and real per-branch noise.
+    python3 gen_sim_re_slowdown.py > sim.xml
+
+    # 2. run it
     beast -overwrite -seed 17 sim.xml
-    python3 ../validation/check_sim_re.py sim     # scores it against the truth
+
+    # 3. score it against the truth: posterior median, 95% interval, whether it
+    #    covers, effective sample size, and the design counts
+    python3 ../validation/check_sim_re.py sim
+
+For the full stack, the configuration this package exists for:
+
+    python3 gen_sim_re_slowdown.py --targeted --mascot --boundaries "2.5" > stack.xml
+
+To see which branches ended up with which rate, `validation/check_rates.py` recomputes every
+branch rate independently with dendropy and writes the files that `plot_rate_trees.R` turns
+into a tree per page, coloured by design column.
+
+`validation/ANALYSES.md` lists every analysis run during development, the one command that
+rebuilds each, and what it established. The XMLs themselves are not committed: each inlines
+the alignment and they come to 9 MB, all of it regenerable.
+
+**Reading a run.** Three columns are worth checking before anything else. `nPainted.multiple`
+must be 0 whenever the clades are disjoint. Every `monophyletic.<clade>` must be 1. And if
+`validate="true"` is set on the design logger, `design.staleEntries` must be 0 at every
+sample. Any of those going wrong means the design is not what the XML says it is, and the
+rest of the output is not worth reading.
 
 `examples/design_check_6taxon.xml` is the smallest thing to read first: a six-taxon tree
 whose design can be counted by hand.
 
-The simulation generator has two options that stack, so one script produces every
-configuration:
+### Generator options
+
+The simulation generator has options that stack, so one script produces every configuration:
 
 | Command | Tree moves | Tree prior |
 | --- | --- | --- |
@@ -258,7 +305,7 @@ by about a third at the top, which is why this is documented rather than matched
 | `version.xml` | package metadata **and service registration**; every public class must be listed or BEAST reports it as missing |
 | `build.xml` | ant build |
 | `examples/` | generators and small XMLs, one per validation stage |
-| `validation/` | scoring scripts, written expectations, and the resulting figures |
+| `validation/` | scoring scripts, written expectations, the figures, and `ANALYSES.md`, which records every run and the command that rebuilds it |
 | `data/` | the small datasets the examples need; see `data/README.md` |
 
 ## Status
@@ -279,6 +326,9 @@ recomputation. They are still worth writing as regression protection; see
 | 50-taxon local-clock simulation | background rate, coefficient and design all recovered |
 | Random effect plus slowdown simulation | both coefficients recovered; see below |
 | Compatibility with the full ORC operator suite | acceptance 0.40 to 0.48 |
+| Compatibility with the targetedbeast tree moves | about 2x the mixing per state, same coverage |
+| The full stack: clock, targeted moves, ORC and Mascot together | runs; no stale cache at any of 2138 samples |
+| Clock estimates across three different tree priors | agree to within a percent or two |
 
 **One known behaviour, and it is not a defect.** On a simulation with a genuine random
 effect, estimating the tree and the rate together gave a background rate 21% high, a tree
@@ -320,6 +370,25 @@ cheap either way: a tree comes from a newick string through `TreeParser` in thre
       coefficient and a branch in two columns, where the coefficients sum.
 - [ ] **Input validation** that already exists: `normalize="true"` rejected, coefficient
       dimension mismatched against the design, `excludeClade` without `includeStem`.
+
+**The generators need tests too, and they are a different job.** Everything above is Java.
+The bugs that have actually happened in the generators are arithmetic and wiring, and they
+are cheap to catch with plain Python assertions:
+
+- [ ] **Grid arithmetic.** For K levels, assert the emitted grid has K+1 values and every
+      skyline parameter has dimension K+2. Getting these out of step is the single easiest
+      way to produce a silently wrong Mascot model, and it is why the grid is derived rather
+      than typed.
+- [ ] **A single shift value is rejected.** It currently produces an XML that exits 0, logs
+      nothing and reports NaN tip types. The generator should refuse it outright.
+- [ ] **Calendar versus relative grids.** Assert the `rateShifts` element has a `tree`
+      attribute with `--levels` and none with `--boundaries`. That one attribute is the whole
+      difference between the two, and it is invisible on inspection.
+- [ ] **Every emitted XML parses**, and contains exactly the layers the flags asked for. A
+      three-line check over all flag combinations would have caught the slow clade silently
+      missing from the design when the two-column option was first written.
+- [ ] **No `--` inside an XML comment**, which is illegal and has broken generated files
+      three times.
 
 **If a third tier is wanted.**
 
