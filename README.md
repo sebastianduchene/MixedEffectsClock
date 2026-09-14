@@ -43,6 +43,49 @@ The coefficients are unbounded, so a clade can be slower than background as well
 There is no separate intercept parameter: `clock.rate` carries it, which is what keeps the
 standard up-and-down operators meaningful.
 
+## The Java that was written
+
+437 lines in three classes, in the package `mixedeffectsclock`. Everything else in this
+repository is XML, generators or scoring scripts.
+
+**The central decision was to inherit rather than start from scratch.**
+`MixedEffectsClockModel` extends BEAST 2's stock `UCRelaxedClockModel` instead of
+implementing `BranchRateModel` directly. Two of the three terms in the model already exist
+there: the clock rate is the exponentiated intercept, and the branch multipliers are the
+exponentiated deviations, drawn from a lognormal pinned to mean one in real space. Inheriting
+means the mean-one pinning that keeps the intercept identifiable comes for free, the
+optimised relaxed clock operators still apply, and the dispersion parameter keeps exactly the
+meaning it has in every other BEAST 2 analysis.
+
+So the entire model addition is one line: the rate for a branch is the parent's rate
+multiplied by the exponential of the sum of the coefficients whose columns that branch loads
+on. Everything else in the file works out which columns those are, and makes sure that answer
+is never stale.
+
+| Class | Lines | What it does |
+| --- | --- | --- |
+| `MixedEffectsClockModel` | 275 | the clock: the clade factor, the design matrix, and its cache |
+| `CladeDesign` | 42 | one design-matrix entry: a taxon set, the stem and exclusion flags, and which coefficient it loads on |
+| `DesignLogger` | 120 | diagnostics: branch counts per column, monophyly indicators, and a stale-cache check |
+
+**Most of the complexity is cache invalidation, and that is where the risk lives.** The design
+matrix depends on the topology, because monophyly fixes which taxa form a clade but not which
+branches sit inside it, and internal node numbering shifts as subtrees move. So it cannot be
+computed once. The class marks itself dirty when the tree changes, rebuilds lazily, and keeps
+a copy so a rejected proposal restores the previous matrix rather than recomputing it.
+
+One thing here was not obvious. The parent class has its own tree-dirty check **commented
+out** in the BEAST source, so it never recomputes on a topology change. The subclass has to
+reinstate it. Without that the model would look fine and be quietly wrong, which is why
+`DesignLogger` can recompute the design from scratch and report disagreements: per-column
+counts cannot detect a stale cache, since the same entries stay marked and only point at the
+wrong branches.
+
+**What is deliberately not ours.** No operators: the moves are BEAST's and ORC's, which is
+what subclassing buys. No priors, no distribution: the mean-one lognormal is the stock one. No
+gradients or Hamiltonian sampling, because BEAST 2 has none and the benchmark says little is
+lost. `JAVA_CLASSES.md` covers all three classes method by method.
+
 ## Building
 
 BEAST 2.7 class files are Java 17, so a JDK 17 or newer is required; a Java 11 compiler
