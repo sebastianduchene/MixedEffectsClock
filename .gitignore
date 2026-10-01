@@ -21,6 +21,8 @@ examples/*_run.xml
 # Editor and OS noise
 *~
 .DS_Store
+__pycache__/
+*.pyc
 
 # Derived intermediates from check_rates.py, regenerated on every run. The PDFs are
 # kept, so a reviewer can see the result without running anything.
