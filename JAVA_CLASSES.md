@@ -74,7 +74,7 @@ The intercept is **not** an input. It is carried by the inherited `clock.rate` a
 
 ---
 
-## 2. `CladeDesign.java` — one entry of the design matrix (42 lines)
+## 2. `CladeDesign.java` — one entry of the design matrix
 
 A small holder describing one clade and how it maps onto branches.
 
@@ -82,12 +82,31 @@ A small holder describing one clade and how it maps onto branches.
 | --- | --- | --- |
 | `taxonset` | required | the taxa whose common ancestor defines the clade |
 | `includeStem` | false | also assign the branch subtending that ancestor |
-| `excludeClade` | false | assign **only** the stem, nothing inside |
+| `includeTerminal` | true | assign the terminal (tip) branches inside the clade |
+| `excludeClade` | false | exclude the internal (non-terminal) branches inside the clade |
 | `category` | 0 | which coefficient this clade loads on |
 
-Several entries may share a `category`, which is how two disjoint groups of branches share
-one coefficient. It rejects the one combination that would assign no branches at all,
-`excludeClade` without `includeStem`.
+The three branch-selection flags decompose a clade's subtree into three parts
+— stem, internal, terminal — and control each independently:
+
+| includeStem | includeTerminal | excludeClade | Result |
+| --- | --- | --- | --- |
+| false | true  | false | internal + terminal (default: all descendants) |
+| true  | true  | false | stem + internal + terminal |
+| true  | false | true  | stem only |
+| false | true  | true  | **terminal only** |
+| false | false | false | internal only |
+| true  | true  | true  | stem + terminal |
+| true  | false | false | stem + internal |
+| false | false | true  | rejected (no branches) |
+
+When `includeTerminal="true"` with `excludeClade="true"`, only the terminal
+branches whose tips are **in the taxon set** are marked — not every leaf under
+the MRCA. This is the intended way to assign a rate to a non-monophyletic
+group's tip branches without painting the connecting internals.
+
+Several entries may share a `category`, which is how two disjoint groups of
+branches share one coefficient.
 
 ---
 

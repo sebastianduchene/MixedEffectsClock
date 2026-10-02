@@ -1,6 +1,7 @@
 package mixedeffectsclock;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -165,9 +166,22 @@ public class MixedEffectsClockModel extends UCRelaxedClockModel {
                         + c.getTaxonSet().getID());
             }
             final int col = c.getCategory();
+            final boolean excludeInternal = c.excludeClade();
+            final boolean includeTerminal = c.includeTerminal();
 
-            if (!c.excludeClade()) {
+            if (!excludeInternal && includeTerminal) {
                 markSubtree(mrca, col, d);       // every branch strictly inside the clade
+            } else {
+                Set<Integer> taxonTipNrs = null;
+                if (includeTerminal) {
+                    taxonTipNrs = new HashSet<>();
+                    for (Node leaf : tree.getExternalNodes()) {
+                        if (taxa.contains(leaf.getID())) {
+                            taxonTipNrs.add(leaf.getNr());
+                        }
+                    }
+                }
+                markSubtreeSelective(mrca, col, d, excludeInternal, taxonTipNrs);
             }
             if (c.includeStem() && !mrca.isRoot()) {
                 d[mrca.getNr()][col] = true;     // the branch subtending the MRCA
@@ -181,6 +195,27 @@ public class MixedEffectsClockModel extends UCRelaxedClockModel {
         for (Node child : node.getChildren()) {
             d[child.getNr()][col] = true;
             markSubtree(child, col, d);
+        }
+    }
+
+    /**
+     * Selectively marks branches below node. Terminal branches are marked only if
+     * the tip's node number is in taxonTipNrs (null means skip all terminals).
+     * Internal branches are marked only if excludeInternal is false.
+     */
+    private void markSubtreeSelective(Node node, int col, boolean[][] d,
+                                       boolean excludeInternal, Set<Integer> taxonTipNrs) {
+        for (Node child : node.getChildren()) {
+            if (child.isLeaf()) {
+                if (taxonTipNrs != null && taxonTipNrs.contains(child.getNr())) {
+                    d[child.getNr()][col] = true;
+                }
+            } else {
+                if (!excludeInternal) {
+                    d[child.getNr()][col] = true;
+                }
+                markSubtreeSelective(child, col, d, excludeInternal, taxonTipNrs);
+            }
         }
     }
 
