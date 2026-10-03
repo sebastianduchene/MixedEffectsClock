@@ -169,20 +169,13 @@ public class MixedEffectsClockModel extends UCRelaxedClockModel {
             final boolean excludeInternal = c.excludeClade();
             final boolean includeTerminal = c.includeTerminal();
 
-            if (!excludeInternal && includeTerminal) {
-                markSubtree(mrca, col, d);       // every branch strictly inside the clade
-            } else {
-                Set<Integer> taxonTipNrs = null;
-                if (includeTerminal) {
-                    taxonTipNrs = new HashSet<>();
-                    for (Node leaf : tree.getExternalNodes()) {
-                        if (taxa.contains(leaf.getID())) {
-                            taxonTipNrs.add(leaf.getNr());
-                        }
-                    }
+            Set<Integer> taxonTipNrs = new HashSet<>();
+            for (Node leaf : tree.getExternalNodes()) {
+                if (taxa.contains(leaf.getID())) {
+                    taxonTipNrs.add(leaf.getNr());
                 }
-                markSubtreeSelective(mrca, col, d, excludeInternal, taxonTipNrs);
             }
+            markSteinerSubtree(mrca, col, d, excludeInternal, includeTerminal, taxonTipNrs);
             if (c.includeStem() && !mrca.isRoot()) {
                 d[mrca.getNr()][col] = true;     // the branch subtending the MRCA
             }
@@ -190,33 +183,38 @@ public class MixedEffectsClockModel extends UCRelaxedClockModel {
         return d;
     }
 
-    /** Marks every branch below node, i.e. the branch subtending each descendant. */
-    private void markSubtree(Node node, int col, boolean[][] d) {
-        for (Node child : node.getChildren()) {
-            d[child.getNr()][col] = true;
-            markSubtree(child, col, d);
-        }
-    }
-
     /**
-     * Selectively marks branches below node. Terminal branches are marked only if
-     * the tip's node number is in taxonTipNrs (null means skip all terminals).
-     * Internal branches are marked only if excludeInternal is false.
+     * Marks branches on the Steiner subtree connecting the taxon tips through
+     * node. Only branches on paths from node down to tips in taxonTipNrs are
+     * candidates; the flags control which of those are actually marked.
+     *
+     * For a monophyletic group the Steiner subtree IS the full subtree, so
+     * this is backward-compatible. For a non-monophyletic group it restricts
+     * the painting to just the connecting branches.
+     *
+     * Returns true if any taxon tip exists in the subtree rooted at node.
      */
-    private void markSubtreeSelective(Node node, int col, boolean[][] d,
-                                       boolean excludeInternal, Set<Integer> taxonTipNrs) {
-        for (Node child : node.getChildren()) {
-            if (child.isLeaf()) {
-                if (taxonTipNrs != null && taxonTipNrs.contains(child.getNr())) {
-                    d[child.getNr()][col] = true;
-                }
-            } else {
-                if (!excludeInternal) {
-                    d[child.getNr()][col] = true;
-                }
-                markSubtreeSelective(child, col, d, excludeInternal, taxonTipNrs);
+    private boolean markSteinerSubtree(Node node, int col, boolean[][] d,
+                                        boolean excludeInternal, boolean includeTerminal,
+                                        Set<Integer> taxonTipNrs) {
+        if (node.isLeaf()) {
+            boolean isTaxon = taxonTipNrs.contains(node.getNr());
+            if (isTaxon && includeTerminal) {
+                d[node.getNr()][col] = true;
             }
+            return isTaxon;
         }
+
+        boolean anyTaxonBelow = false;
+        for (Node child : node.getChildren()) {
+            boolean childHasTaxon = markSteinerSubtree(child, col, d,
+                    excludeInternal, includeTerminal, taxonTipNrs);
+            if (childHasTaxon && !child.isLeaf() && !excludeInternal) {
+                d[child.getNr()][col] = true;
+            }
+            anyTaxonBelow |= childHasTaxon;
+        }
+        return anyTaxonBelow;
     }
 
     @Override
