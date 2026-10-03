@@ -100,10 +100,19 @@ The three branch-selection flags decompose a clade's subtree into three parts
 | true  | false | false | stem + internal |
 | false | false | true  | rejected (no branches) |
 
-When `includeTerminal="true"` with `excludeClade="true"`, only the terminal
-branches whose tips are **in the taxon set** are marked — not every leaf under
-the MRCA. This is the intended way to assign a rate to a non-monophyletic
-group's tip branches without painting the connecting internals.
+**Non-monophyletic groups and the Steiner subtree.** The MRCA of a
+non-monophyletic taxon set subtends more taxa than the set contains.
+Marking every descendant branch would paint unrelated lineages and cause
+overlapping columns. Instead, the code marks only branches on the
+**Steiner subtree** — the minimal set of branches connecting the MRCA to
+the tips in the taxon set. For monophyletic groups the Steiner subtree is
+the full subtree, so behaviour is identical. The three flags then select
+which parts of the Steiner subtree to include:
+
+- Terminal branches are marked only for tips **in the taxon set** (not
+  every leaf under the MRCA).
+- Internal branches are marked only if they are on a path from the MRCA
+  to a taxon tip.
 
 Several entries may share a `category`, which is how two disjoint groups of
 branches share one coefficient.
