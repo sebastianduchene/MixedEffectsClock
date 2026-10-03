@@ -21,8 +21,9 @@ paints the branches they intended before committing a long run.
 - "Redact the sequences and sample the prior."
 - "Does my ME-clock design do what I think?"
 - Any time a new `<clade spec="mixedeffectsclock.CladeDesign" ...>` block was
-  added, moved or had its `includeStem` flipped — the only honest way to confirm
-  the change does what was intended is to look at it on a tree.
+  added, moved or had its `includeStem`/`includeTerminal`/`excludeClade` flags
+  changed — the only honest way to confirm the change does what was intended is
+  to look at it on a tree.
 
 For colouring a single already-sampled tree, prefer the sibling skill
 `colour-me-clock-tree`. For the full model + implementation reference, see the
@@ -67,8 +68,10 @@ discarded as burn-in.
    design from the XML the same way the `colour-me-clock-tree` skill does,
    reads the trees file (robust to a still-writing final line), picks the
    requested number of trees evenly across the post-burn-in portion, assigns
-   each branch to its column by MRCA + strict-descendants (+ stem when
-   `includeStem="true"`), and writes a multi-page PDF.
+   each branch to its column using the **Steiner subtree** (only branches on
+   paths from the MRCA to the taxon tips, not every descendant under the MRCA),
+   respecting the three flags `includeStem`, `includeTerminal` and
+   `excludeClade`, and writes a multi-page PDF.
 
 ## Why all-N sequences, not `sampleFromPrior=true`
 
@@ -93,7 +96,10 @@ background = grey, each clade = its own colour. Confirm, going down the pages:
   consistent across trees.
 - `monophyly` is `T` for every clade on every tree. If it drifts to `F` on
   any tree, add or tighten the `MRCAPrior monophyletic="true"` constraint.
-- A no-stem clade of `n` taxa paints `2n-2` branches; a `+stem` clade adds one.
+- For a monophyletic clade with default flags, a no-stem clade of `n` taxa
+  paints `2n-2` branches; a `+stem` clade adds one. For non-monophyletic
+  groups the count reflects the Steiner subtree (connecting branches only),
+  not the full MRCA subtree.
 - No **OVERLAP** warnings in the stdout / summary page. Any overlap means
   the design is not exclusive and two columns are loading on the same
   branches.

@@ -59,7 +59,9 @@ for (blk in clade_blocks) {
   nm   <- sub("^design\\.?", "", nm)
   cat_m <- regmatches(blk, regexpr('category="(\\d+)"', blk, perl = TRUE))
   cat_  <- as.integer(sub('.*"(\\d+)".*', "\\1", cat_m))
-  stem <- grepl('includeStem="true"', blk)
+  stem    <- grepl('includeStem="true"', blk)
+  incTerm <- !grepl('includeTerminal="false"', blk)   # default true
+  exclCl  <- grepl('excludeClade="true"', blk)        # default false
 
   # taxon set: inline <taxonset id="..." ...>...</taxonset>, or <taxonset idref="...">
   tsblk <- regmatches(blk,
@@ -75,7 +77,8 @@ for (blk in clade_blocks) {
     taxa <- if (length(tsblk2) && nzchar(tsblk2))
               taxa_from_taxonset_block(tsblk2) else character(0)
   }
-  clades[[nm]] <- list(cat = cat_, stem = stem, taxa = taxa)
+  clades[[nm]] <- list(cat = cat_, stem = stem, includeTerminal = incTerm,
+                       excludeClade = exclCl, taxa = taxa)
 }
 if (!length(clades))
   stop("no CladeDesign blocks found in ", xml_path,
@@ -83,8 +86,9 @@ if (!length(clades))
 clades <- clades[order(sapply(clades, function(c) c$cat))]
 cat(sprintf("design: %d columns\n", length(clades)))
 for (nm in names(clades))
-  cat(sprintf("  cat %d  %-14s stem=%s  (%d taxa)\n",
-              clades[[nm]]$cat, nm, clades[[nm]]$stem, length(clades[[nm]]$taxa)))
+  cat(sprintf("  cat %d  %-14s stem=%s terminal=%s excludeInternal=%s  (%d taxa)\n",
+              clades[[nm]]$cat, nm, clades[[nm]]$stem, clades[[nm]]$includeTerminal,
+              clades[[nm]]$excludeClade, length(clades[[nm]]$taxa)))
 
 # ---- 2. read the sampled trees ---------------------------------------------
 raw <- readLines(trees_path, warn = FALSE)
@@ -124,6 +128,8 @@ read_one <- function(line) {
 trees <- lapply(usable[picks], read_one)
 
 # ---- 3. assign the design column per edge ----------------------------------
+# Steiner subtree: only branches on paths from MRCA to taxon tips are
+# candidates. For monophyletic groups this equals the full subtree.
 descendants <- function(tree, m) {
   kids <- function(n) tree$edge[tree$edge[, 1] == n, 2]
   out <- c(); st <- m
@@ -131,10 +137,41 @@ descendants <- function(tree, m) {
   out
 }
 
+steiner_set <- function(tree, mrca_node, tip_idx) {
+  n_tips <- Ntip(tree)
+  max_node <- max(tree$edge)
+  tip_in_set <- logical(max_node); tip_in_set[tip_idx] <- TRUE
+  has_taxon  <- logical(max_node); has_taxon[tip_idx]  <- TRUE
+
+  children <- vector("list", max_node)
+  for (i in seq_len(nrow(tree$edge)))
+    children[[tree$edge[i, 1]]] <- c(children[[tree$edge[i, 1]]], tree$edge[i, 2])
+
+  post_order <- function(node) {
+    if (node <= n_tips) return(node)
+    result <- c()
+    for (ch in children[[node]]) result <- c(result, post_order(ch))
+    c(result, node)
+  }
+  nodes <- post_order(mrca_node)
+
+  for (nd in nodes) {
+    if (nd <= n_tips) next
+    for (ch in children[[nd]])
+      if (has_taxon[ch]) { has_taxon[nd] <- TRUE; break }
+  }
+
+  on_steiner <- logical(max_node)
+  for (nd in nodes) if (has_taxon[nd]) on_steiner[nd] <- TRUE
+  on_steiner[mrca_node] <- FALSE
+  on_steiner
+}
+
 assign_design <- function(tree) {
   ec   <- rep(NA_integer_, nrow(tree$edge))
   mono <- setNames(logical(length(clades)), names(clades))
   overlap <- c()
+  n_tips <- Ntip(tree)
   for (nm in names(clades)) {
     cl   <- clades[[nm]]
     tp   <- match(cl$taxa, tree$tip.label)
@@ -143,13 +180,26 @@ assign_design <- function(tree) {
       next
     }
     mnode <- if (length(tp) == 1) tp else getMRCA(tree, cl$taxa)
-    desc  <- descendants(tree, mnode)
-    strict <- setdiff(desc, mnode)
-    ie <- which(tree$edge[, 2] %in% strict)
+    on_st <- steiner_set(tree, mnode, tp)
+
+    ie <- c()
+    for (i in seq_len(nrow(tree$edge))) {
+      child <- tree$edge[i, 2]
+      if (!on_st[child]) next
+      is_leaf <- child <= n_tips
+      if (is_leaf) {
+        if (cl$includeTerminal && tree$tip.label[child] %in% cl$taxa)
+          ie <- c(ie, i)
+      } else {
+        if (!cl$excludeClade)
+          ie <- c(ie, i)
+      }
+    }
     if (cl$stem) ie <- c(ie, which(tree$edge[, 2] == mnode))
     if (any(!is.na(ec[ie]))) overlap <- c(overlap, nm)
     ec[ie] <- cl$cat
-    mono[nm] <- setequal(tree$tip.label[desc[desc <= Ntip(tree)]], cl$taxa)
+    desc <- descendants(tree, mnode)
+    mono[nm] <- setequal(tree$tip.label[desc[desc <= n_tips]], cl$taxa)
   }
   list(edge_cat = ec, mono = mono, overlap = overlap)
 }
@@ -184,8 +234,14 @@ draw_one <- function(tree, res, idx_shown, idx_total, state) {
   legend("bottomleft", bty = "n", cex = 0.7, lwd = 2.4,
          legend = c("background (intercept only)",
                     sprintf("cat %d: %s%s", sorted_cats, names_by_cat,
-                            ifelse(sapply(clades[names_by_cat], function(c) c$stem),
-                                   " (+stem)", ""))),
+                            sapply(clades[names_by_cat], function(c) {
+                              flags <- c()
+                              if (c$stem) flags <- c(flags, "+stem")
+                              if (!c$includeTerminal) flags <- c(flags, "-term")
+                              if (c$excludeClade) flags <- c(flags, "-internal")
+                              if (length(flags)) paste0(" (", paste(flags, collapse=","), ")")
+                              else ""
+                            }))),
          col = c("grey70", col_by_cat[as.character(sorted_cats)]))
 }
 
@@ -213,10 +269,15 @@ summary_lines <- c(
   "",
   "Branches per column (mean across sampled trees):",
   sprintf("  %-14s %6.2f", "background", mean(nb_matrix["bg", ])),
-  sapply(names_by_cat, function(nm)
-    sprintf("  %-14s %6.2f   (cat %d%s)",
-            nm, mean(nb_matrix[nm, ]), clades[[nm]]$cat,
-            if (clades[[nm]]$stem) ", +stem" else "")),
+  sapply(names_by_cat, function(nm) {
+    cl <- clades[[nm]]
+    flags <- c()
+    if (cl$stem) flags <- c(flags, "+stem")
+    if (!cl$includeTerminal) flags <- c(flags, "-term")
+    if (cl$excludeClade) flags <- c(flags, "-internal")
+    fstr <- if (length(flags)) paste0(", ", paste(flags, collapse=",")) else ""
+    sprintf("  %-14s %6.2f   (cat %d%s)", nm, mean(nb_matrix[nm, ]), cl$cat, fstr)
+  }),
   "",
   "Monophyly rate (fraction of sampled trees where the clade's MRCA equals its taxa set):",
   sapply(names(mono_rate), function(nm)
