@@ -1,4 +1,4 @@
-<package name='MixedEffectsClock' version='0.0.1'>
+<package name='MixedEffectsClock' version='0.1.0'>
   <depends on='BEAST.base' atleast='2.7.7'/>
 
   <!-- BEAST 2.7 will not load a class that is not registered here. The failure
