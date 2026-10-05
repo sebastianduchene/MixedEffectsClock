@@ -285,6 +285,34 @@ N+1, with the last entry never read by Mascot.
 > For **K** rate levels: **K+1** shift values, and every `logNe` parameter at
 > **dimension K+2**, of which K+1 are live.
 
+**"Live" is not the same as identified, and the entries are not step heights.** `Skygrowth`
+reads its vector as log Ne **at knots** and interpolates linearly in log space, so the
+function is piecewise exponential and continuous. Mascot never evaluates that function except
+at **interval midpoints**: `getCoalescentRate` caps the index and reads
+`getIntervalMidpoint(j)`. The model the coalescent sees is therefore **piecewise constant with
+K levels**, and those K values are the pairwise averages of consecutive entries,
+`(x[0]+x[1])/2`, `(x[1]+x[2])/2`, and so on.
+
+So K+1 live entries reach the data through K numbers. **Two directions per vector are
+invisible to the likelihood**: the alternating vector `(1,-1,1,-1,...,0)`, which leaves every
+midpoint average unchanged, and the inert last entry. Verify on your own build by logging the
+Mascot distribution at `chainLength="0"` and perturbing the vector: along either direction the
+density is identical to the last digit. Those directions still sample, still mix, and still
+produce clean-looking marginals that are **exactly the prior**.
+
+The last shift value is a **counter, not a boundary**. No midpoint reads it, so its value never
+reaches the likelihood; it only has to keep the list increasing. Do not reason about where it
+"puts" the final level.
+
+**Reading the smoothing prior.** `mascot.util.Difference` returns `x[i] - x[i+1]`, younger knot
+minus older, and returns a vector the **same length as its input with a hard zero in the last
+slot** — so a prior over it silently includes one identically-zero term, a constant in the
+logged prior. The increment is a difference in *log* Ne, hence a **fold change** on Ne, read
+forwards in time. A `Normal(0, 1)` on it allows a fold change of 0.37 to 2.72 per step at one
+SD and 0.14 to 7.10 at 95%. It is per **step**, not per unit time: `Skygrowth` divides by the
+interval width to get the growth rate it applies, so on a tree-relative grid the same prior
+means different things in years as the root moves.
+
 A **single** shift value fails silently: the run exits 0, logs nothing, and never produces
 a sample. The minimum is two values, which is one level.
 
@@ -298,6 +326,41 @@ Whether the values are fractions or calendar times is decided by one attribute:
 An absolute grid that does not reach the root collapses the skyline to a constant with no
 warning. Share **one** `RateShifts` object between the dynamics and every `Skygrowth`;
 separate grids do the same thing.
+
+### Migration rates: direction, units and the prior that is not what you wrote
+
+Migration reuses `Skygrowth`, so everything above applies to it too. Three further facts.
+
+**The parameters are forwards-in-time and per capita. Mascot rescales them:**
+
+    backwards(i -> j) = forwards(j -> i) * Ne[j] / Ne[i]
+
+capped at `maxRate`, default `Infinity`. The acting rate depends on the Ne ratio as much as on
+the parameter, so migration and Ne posteriors are not separately interpretable. Backwards in
+time an `X_to_Y` parameter governs Y lineages moving into X, which is the reverse of how the
+name reads.
+
+**Units.** The parameter is a natural log; exponentiate for a rate per lineage per unit time.
+**Ne is a timescale, not a headcount**: `getCoalescentRate` returns `1.0/getNeTime(mid)`, so a
+knot of 7 is about 1097 time units. Three scales appear in the output and they differ:
+`SkylineMig.*` sampled is log, `f_MigDynamics.*` from the dynamics logger is real-space
+forwards already exponentiated, and `Ne_*` from the same logger is log Ne, not exponentiated.
+The dynamics logger prints one more epoch than the likelihood uses.
+
+**Check the induced prior, not the one you typed.** A `Normal(m, 2)` on the forwards log rate
+with independent `Normal(7, 4)` on each deme's first Ne knot gives a backwards-rate SD of about
+6.06, a 95% span over ten orders of magnitude, and several percent of prior mass above one
+crossing per lineage per unit time, which is where the structured coalescent degenerates toward
+panmixia. The culprit is the Ne prior entering twice with nothing tying the demes together. Put
+the diffuse prior on the log **ratio** of the two Ne if you want the level vague and the ratio
+tight.
+
+**Splitting the grid.** Trajectories may take different `RateShifts` objects. Declare the second
+at the **top level** of `<beast>`; nesting it inside the dynamics fails with "Multiple entries
+for input rateShifts but only single entry expected". An identical-valued second grid reproduces
+the shared result exactly. But evaluation times come from the **dynamics'** grid, so a finer
+per-trajectory grid adds parameters the likelihood still reads at only K times. Only a coarser
+one is coherent. Keep every grid on the same footing, all tree-relative or all absolute.
 
 For a ghost (unsampled) deme, name both types in `types=` — an unsampled type cannot be
 read off the type trait — and leave `fromBeauti` at its default false, otherwise the
@@ -366,6 +429,9 @@ this model introduces. If the dates or the rate are weakly informed, expect it.
 | `design.staleEntries` above 0 | the design cache is not tracking the topology; per-column counts will still look right |
 | Run exits 0, log file has a header and no samples | a one-value Mascot rate-shift grid |
 | Skyline posterior flat, all intervals identical | absolute grid that does not reach the root, or separate `RateShifts` objects |
+| A skyline entry has a clean, well-mixed posterior that sits on its prior | expected, not a bug: the last entry is inert and one alternating direction per vector is invisible to the likelihood |
+| Migration posterior looks informative but shifts when Ne does | expected: the acting rate is `forwards * Ne[j]/Ne[i]`, so the Ne ratio can absorb or create apparent migration signal |
+| Lineages appear to change deme implausibly often | check the INDUCED prior on the backwards rate, not the forwards prior you wrote; independent diffuse Ne priors put real mass above one crossing per unit time |
 | Dispersion ESS in the low hundreds | a bare scale operator on `ucldStdev` instead of ORC's joint scaler |
 | Dispersion climbs far above its prior, tree length with it | no `Prior` on `rates`, so the joint move is unbalanced |
 | `class file has wrong version 61.0` | building with a Java 11 compiler; needs JDK 17+ |
