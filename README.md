@@ -7,6 +7,34 @@ operators.
 Version 0.0.1. Working and validated against known truth; not yet used for a published
 analysis. See [Status](#status) for exactly what has and has not been tested.
 
+## What the clock does
+
+![The mixed-effects clock: each branch rate is a background rate, times a per-clade fold change, times a per-branch lognormal deviation. The left panel colours a tree by clade; the right panel shows the lognormal distribution each branch rate is drawn from, resampled in a loop.](docs/mixed_effects_clock.gif)
+
+Every branch has its own rate, assembled from three pieces: one **background rate** shared by
+the whole tree, a **fold change** for each clade the branch belongs to, and a **per-branch
+lognormal deviation**. So a branch rate is a *draw* from a distribution whose centre is fixed
+by which clade the branch sits in. In the figure, the left panel colours each branch by its
+clade and the right shows the distribution its rate comes from; the loop resamples the
+per-branch deviation, so the same clade structure keeps producing a fresh set of rates.
+
+- **The background, `exp(beta_0)`.** One rate the whole tree shares — the grey branches sit on
+  it. It is the inherited `clock.rate`, and it carries the intercept, so the ordinary up-and-down
+  operators stay meaningful.
+- **The clades, `beta_k`.** Each named, monophyletic clade adds a log fold change: the
+  `coefficient` parameter, one entry per `CladeDesign` column. The coefficients are unbounded,
+  so a clade can be slower than background (clade B in the figure) as well as faster (clade A),
+  and a branch in two clades carries the sum.
+- **The wobble, `eps_i`.** On top of its clade centre, every branch gets a lognormal deviation
+  of spread `sigma` — the inherited relaxed-clock `rates`. Under this clock `sigma` is a
+  *residual*: a small value means the named clades have already absorbed the rate variation,
+  not that the tree is clocklike.
+
+The next sections give this formally and precisely: [The model](#the-model) has the equation
+and the full term-to-XML mapping. The figure is regenerable (`python3 docs/make_model_animation.py`)
+and uses the package's own known-truth values — background 0.005, clade A ×2, clade B ×0.3,
+clade C ×1.4.
+
 ## Why it exists
 
 BEAST X already has this clock. BEAST 2 does not, and no combination of existing BEAST 2
@@ -324,6 +352,7 @@ by about a third at the top, which is why this is documented rather than matched
 | Path | Contents |
 | --- | --- |
 | `JAVA_CLASSES.md` | what each class does, written for someone who has not followed the work |
+| `docs/` | the README's model animation and the script that regenerates it |
 | `src/mixedeffectsclock/MixedEffectsClockModel.java` | the clock; a subclass of the stock relaxed clock |
 | `src/mixedeffectsclock/CladeDesign.java` | one design-matrix entry |
 | `src/mixedeffectsclock/DesignLogger.java` | branch counts, monophyly indicators, stale-cache check |
