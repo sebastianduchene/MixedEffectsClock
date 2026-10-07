@@ -456,12 +456,3 @@ has actually happened here, and every one of them is silent.
 50-taxon tree in `data/`, which is realistic size rather than a toy. Nothing needing an MCMC:
 the operators are ORC's and BEAST's, and the end-to-end checks in `validation/` cover them
 better than a unit test could.
-
-## Not done
-
-- The ten-replicate coverage study for the rate-against-time behaviour in [Status](#status)
-  is not done. It is one replicate so far.
-- Never run at real scale; every test is 5,000 or 10,000 sites against a 1.3 Mb target.
-- The dispersion prior is documented rather than matched to BEAST X.
-- No licence chosen. BEAST 2 and ORC are LGPL, which is the obvious candidate.
-- No BEAUti integration; XMLs are written by the generators in `examples/`.
