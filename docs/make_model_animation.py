@@ -27,6 +27,7 @@ OUT = os.path.join(os.path.dirname(__file__), "mixed_effects_clock.gif")
 # ---- palette (reads on white; matches the interactive illustration) ----------
 COL = {"bg": "#8c98a7", "A": "#dd5430", "B": "#3b7cc9", "C": "#2f9c6a"}
 FG, MUT, PANEL, LINE = "#1a2330", "#586675", "#ffffff", "#d6dde4"
+EPS = "#6f52c4"   # the per-branch random effect, kept distinct from any clade hue
 
 BG_RATE = 0.005
 FOLD = {"bg": 1.0, "A": 2.0, "B": 0.3, "C": 1.4}   # exp(beta_k)
@@ -131,9 +132,31 @@ for ax in (axT, axR):
 
 fig.text(0.02, 0.955, "The mixed-effects clock: every branch rate is a draw",
          ha="left", va="center", fontsize=13, color=FG, weight="bold")
-fig.text(0.02, 0.90,
-         r"$r_i=\exp(\beta_0)\;\times\;$clade fold change$\;\times\;\exp(\varepsilon_i)$",
-         ha="left", va="center", fontsize=10.5, color=MUT)
+
+# colour-coded equation — each parameter in the colour of its role in the figure:
+#   beta_0 grey (background), clade effect in the clade hue, epsilon_i / sigma violet.
+def colored_eq(x, y, frags, fs):
+    fig.canvas.draw()
+    rend = fig.canvas.get_renderer()
+    inv = fig.transFigure.inverted()
+    for s, c, w in frags:
+        t = fig.text(x, y, s, color=c, fontsize=fs, ha="left", va="center",
+                     weight=w)
+        bb = t.get_window_extent(renderer=rend)
+        x += inv.transform((bb.width, 0))[0] - inv.transform((0, 0))[0]
+
+colored_eq(0.02, 0.895, [
+    (r"$\log r_i = $", FG, "normal"),
+    (r"$\beta_0$", COL["bg"], "bold"),
+    (r"$\, + \,$", MUT, "normal"),
+    (r"$\sum_k X_{ik}\,\beta_k$", COL["A"], "bold"),
+    (r"$\, + \,$", MUT, "normal"),
+    (r"$\varepsilon_i$", EPS, "bold"),
+    (r"$,\ \ \ \varepsilon_i \sim \mathrm{Normal}(0,\, $", MUT, "normal"),
+    (r"$\sigma^2$", EPS, "bold"),
+    (r"$\,)$", MUT, "normal"),
+], 11.5)
+
 axT.set_title("branches coloured by clade", fontsize=10, color=MUT, pad=5)
 axR.set_title("drawn from these distributions", fontsize=10, color=MUT, pad=5)
 
