@@ -53,14 +53,17 @@ def redact_and_rechain(xml_text: str, chain_length: int, tree_log_every: int) ->
     else:
         print(f"redacted {n_seq} sequences to Ns")
 
-    # 2. chainLength on the top-level MCMC run element
+    # 2. chainLength on the top-level MCMC run element.
+    #    Accept both the fully qualified spec="beast.base.inference.MCMC" and
+    #    the short form spec="MCMC" (valid when the namespace is declared on <beast>).
+    mcmc_spec = r'spec="(?:beast\.base\.inference\.)?MCMC"'
     xml_text, n_run = re.subn(
-        r'(<run[^>]*spec="beast\.base\.inference\.MCMC"[^>]*chainLength=")\d+(")',
+        r'(<run[^>]*' + mcmc_spec + r'[^>]*chainLength=")\d+(")',
         lambda m: f"{m.group(1)}{chain_length}{m.group(2)}", xml_text, count=1)
     if n_run == 0:
         # chainLength may come before the spec attribute; try the other order
         xml_text, n_run = re.subn(
-            r'(<run[^>]*chainLength=")\d+("[^>]*spec="beast\.base\.inference\.MCMC")',
+            r'(<run[^>]*chainLength=")\d+("[^>]*' + mcmc_spec + r')',
             lambda m: f"{m.group(1)}{chain_length}{m.group(2)}", xml_text, count=1)
     if n_run == 0:
         sys.exit("ERROR: could not find <run ... spec='...MCMC' chainLength='...'>")
@@ -120,11 +123,15 @@ def main() -> int:
     src = xml_in.read_text()
 
     # Fail loud if this is not a MixedEffectsClock XML.
-    if "mixedeffectsclock.MixedEffectsClockModel" not in src:
+    # Strip XML comments before checking so that mentions of BEAST X elements
+    # inside <!-- ... --> blocks do not trigger a false positive.
+    import re
+    src_no_comments = re.sub(r"<!--.*?-->", "", src, flags=re.DOTALL)
+    if "mixedeffectsclock.MixedEffectsClockModel" not in src_no_comments:
         sys.exit("ERROR: no mixedeffectsclock.MixedEffectsClockModel block in "
                  f"{xml_in}. This skill is for BEAST 2 MixedEffectsClock XMLs only; "
                  "BEAST X <fixedEffects> is a different stack.")
-    if "<fixedEffects" in src:
+    if "<fixedEffects" in src_no_comments:
         sys.exit("ERROR: this looks like a BEAST X XML (<fixedEffects> block). "
                  "This skill is BEAST 2 only.")
 
