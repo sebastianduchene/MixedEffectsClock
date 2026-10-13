@@ -156,7 +156,49 @@ almost always rejected. Over the same 5,000,000 states:
 ```
 
 **4. Coefficients need a random walk, never a scale operator.** They are log-scale and
-cross zero. Use `beast.base.inference.operator.kernel.BactrianRandomWalkOperator`.
+cross zero, and a scale operator is rejected outright on a parameter that can be
+negative.
+
+For a **multi-dimensional** `@coefficient` (two or more distinct categories), use the
+**adaptable variance multivariate normal** operator on the whole vector:
+
+```xml
+<operator id="coefficientAVMN"
+          spec="beast.base.evolution.operator.kernel.AdaptableVarianceMultivariateNormalOperator"
+          scaleFactor="1.0" coefficient="1.0" beta="0.05"
+          initial="800" burnin="400" every="1" weight="9.0">
+  <transformations spec="beast.base.inference.operator.kernel.Transform$NoTransform">
+    <f idref="coefficient"/>
+  </transformations>
+</operator>
+```
+
+AVMN learns the empirical covariance between the coefficients during the first
+`initial` proposals and then proposes along it. On the smallpox 76-taxon,
+5-coefficient analysis the mean ESS over the four outgroup coefficients rose from
+~17 under a Bactrian random walk (`BactrianRandomWalkOperator`, `scaleFactor=0.5`,
+`weight=5`) to ~26 under AVMN at a matched chain length, with no measurable
+throughput cost. Three Bactrian operators stacked together (RW + a finer RW + a
+delta-exchange, total `weight=12`) did **not** improve on the single-RW baseline,
+so adding more Bactrian moves is not the way to fix slow coefficient mixing — AVMN
+is.
+
+For a **one-dimensional** `@coefficient` (only two clade categories, or one clade
+plus background), AVMN degenerates to a scaled univariate Normal walk and gains
+nothing over
+
+```xml
+<operator spec="beast.base.inference.operator.kernel.BactrianRandomWalkOperator"
+          parameter="@coefficient" scaleFactor="0.5" weight="3.0"/>
+```
+
+so stay with the Bactrian RW there. The point of AVMN is correlation between
+coefficients.
+
+AVMN's class is in `beast.base.evolution.operator.kernel`, but its `NoTransform`
+helper is in `beast.base.inference.operator.kernel` — same package split as the
+Bactrian classes listed below, and the operator namespace at the top of a
+BEAUti-generated XML covers neither, so write both fully qualified.
 
 **5. The branch rates need their own prior**, the same mean-one lognormal the clock
 uses. It is easy to leave out, because the clock already declares the distribution:
@@ -178,13 +220,13 @@ template this put `ucldStdev` at 5.5 under a prior with mean 0.333, and took the
 Gamma with mean 7e-9 makes the density underflow to NaN and BEAST cannot initialise at
 all. Start at the prior mean.
 
-The Bactrian operator classes are split across two packages and this costs time
+The kernel operator classes are split across two packages and this costs time
 repeatedly:
 
 | Class | Package |
 | --- | --- |
-| `BactrianScaleOperator`, `BactrianNodeOperator`, `BactrianSubtreeSlide` | `beast.base.evolution.operator.kernel` |
-| `BactrianRandomWalkOperator`, `BactrianUpDownOperator`, `BactrianDeltaExchangeOperator`, `KernelDistribution$Bactrian` | `beast.base.inference.operator.kernel` |
+| `BactrianScaleOperator`, `BactrianNodeOperator`, `BactrianSubtreeSlide`, `AdaptableVarianceMultivariateNormalOperator` | `beast.base.evolution.operator.kernel` |
+| `BactrianRandomWalkOperator`, `BactrianUpDownOperator`, `BactrianDeltaExchangeOperator`, `KernelDistribution$Bactrian`, `Transform$NoTransform` / `Transform$LogTransform` / `Transform$LogConstrainedSumTransform` | `beast.base.inference.operator.kernel` |
 
 ## Checking the design before trusting anything
 
