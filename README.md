@@ -136,7 +136,20 @@ lost. `JAVA_CLASSES.md` covers all three classes method by method.
 | TargetedBeast | the targeted tree moves, only with `--targeted` |
 | BEASTLabs | a metric used by ORC's exchange operators |
 
-**Build and install this package.**
+**Install via the package manager (recommended for most users).**
+
+MixedEffectsClock is listed in the BEAST 2 extra packages repository. Add that repository
+once, then install as normal.
+
+From the command line:
+
+    packagemanager -url https://raw.githubusercontent.com/CompEvol/CBAN/master/packages-extra-2.7.xml
+    packagemanager -add MixedEffectsClock
+
+In BEAUti: `File → Manage Packages → Package repositories → Add URL`, paste the URL above,
+then find `MixedEffectsClock` in the package list and click Install.
+
+**Build and install from source.**
 
     ant install
 
